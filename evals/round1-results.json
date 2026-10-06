@@ -1,0 +1,353 @@
+{
+ "note": "Round 1, 2026-10-06, gpt-5.6-luna: verifier without the repair round. 4 of 5 failures were correct amounts mentioned in the text but not attached as figures (prose-check false positives); 1 (v1) labelled refund increases as net figures. This led to the repair round and the 'attach every amount' prompt rule. Run files were removed: they no longer replay against the current verifier. Prompt paths are as they were then: 'prompts/system.md' was an early draft of v2 (prompt_sha a20d3d18dbc4), not kept; the final v2 is prompts/system-v2.md.",
+ "results": {
+  "prompts/system-v1.md": {
+   "prompt_sha": "9e5f1671e15c",
+   "model": "gpt-5.6-luna",
+   "passed": 13,
+   "runs": 15,
+   "query_errors": 9,
+   "queries": 40,
+   "avg_tokens": 8550,
+   "rows": [
+    {
+     "question": "Why did net sales change between August and September 2026?",
+     "run_id": "20261006-170805-b125",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 8767
+    },
+    {
+     "question": "Why did net sales change between August and September 2026?",
+     "run_id": "20261006-170805-9246",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 8663
+    },
+    {
+     "question": "Why did net sales change between August and September 2026?",
+     "run_id": "20261006-170805-259e",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 9775
+    },
+    {
+     "question": "Which customer segment drove the change in refunds from August to September 2026?",
+     "run_id": "20261006-170805-9a6f",
+     "status": "unverified",
+     "pass": false,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6129,
+     "issues": [
+      "finding 1: net 2026-09-01..2026-10-01 small = 13500 cents [q1] is query_error (the rules give 49000 cents)",
+      "finding 2: net 2026-09-01..2026-10-01 large = 5000 cents [q1] is query_error (the rules give 134000 cents)",
+      "finding 3: net 2026-09-01..2026-10-01 all = 18500 cents [q2] is query_error (the rules give 183000 cents)",
+      "finding 4: net 2026-09-01..2026-10-01 small = 13500 cents [q1] is query_error (the rules give 49000 cents)",
+      "finding 4: net 2026-09-01..2026-10-01 large = 5000 cents [q1] is query_error (the rules give 134000 cents)"
+     ]
+    },
+    {
+     "question": "Which customer segment drove the change in refunds from August to September 2026?",
+     "run_id": "20261006-170805-f830",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6675
+    },
+    {
+     "question": "Which customer segment drove the change in refunds from August to September 2026?",
+     "run_id": "20261006-170820-9bd1",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 5967
+    },
+    {
+     "question": "What were gross sales, refunds and net sales in September 2026?",
+     "run_id": "20261006-170822-ca64",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 5194
+    },
+    {
+     "question": "What were gross sales, refunds and net sales in September 2026?",
+     "run_id": "20261006-170828-c8d1",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 4902
+    },
+    {
+     "question": "What were gross sales, refunds and net sales in September 2026?",
+     "run_id": "20261006-170828-5573",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 4911
+    },
+    {
+     "question": "Did net sales from large customers change between August and September 2026?",
+     "run_id": "20261006-170829-254c",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 5981
+    },
+    {
+     "question": "Did net sales from large customers change between August and September 2026?",
+     "run_id": "20261006-170833-a62d",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 4,
+     "query_errors": 2,
+     "tokens": 17338
+    },
+    {
+     "question": "Did net sales from large customers change between August and September 2026?",
+     "run_id": "20261006-170834-7ac8",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 13860
+    },
+    {
+     "question": "Why are sales down?",
+     "run_id": "20261006-170837-a0e0",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6437
+    },
+    {
+     "question": "Why are sales down?",
+     "run_id": "20261006-170837-f8ea",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 5,
+     "query_errors": 2,
+     "tokens": 15280
+    },
+    {
+     "question": "Why are sales down?",
+     "run_id": "20261006-170843-f190",
+     "status": "unverified",
+     "pass": false,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 8368,
+     "issues": [
+      "prose amount 65000 cents is not a verified figure or a difference of two"
+     ]
+    }
+   ]
+  },
+  "prompts/system.md": {
+   "prompt_sha": "a20d3d18dbc4",
+   "model": "gpt-5.6-luna",
+   "passed": 12,
+   "runs": 15,
+   "query_errors": 5,
+   "queries": 36,
+   "avg_tokens": 7405,
+   "rows": [
+    {
+     "question": "Why did net sales change between August and September 2026?",
+     "run_id": "20261006-170903-115e",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 7538
+    },
+    {
+     "question": "Why did net sales change between August and September 2026?",
+     "run_id": "20261006-170903-68f9",
+     "status": "unverified",
+     "pass": false,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 7219,
+     "issues": [
+      "prose amount 65000 cents is not a verified figure or a difference of two",
+      "prose amount 139000 cents is not a verified figure or a difference of two"
+     ]
+    },
+    {
+     "question": "Why did net sales change between August and September 2026?",
+     "run_id": "20261006-170903-8322",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6806
+    },
+    {
+     "question": "Which customer segment drove the change in refunds from August to September 2026?",
+     "run_id": "20261006-170903-2d0c",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 8325
+    },
+    {
+     "question": "Which customer segment drove the change in refunds from August to September 2026?",
+     "run_id": "20261006-170903-de20",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 8617
+    },
+    {
+     "question": "Which customer segment drove the change in refunds from August to September 2026?",
+     "run_id": "20261006-170919-931c",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 5574
+    },
+    {
+     "question": "What were gross sales, refunds and net sales in September 2026?",
+     "run_id": "20261006-170919-5908",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 5452
+    },
+    {
+     "question": "What were gross sales, refunds and net sales in September 2026?",
+     "run_id": "20261006-170919-3a0a",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 7616
+    },
+    {
+     "question": "What were gross sales, refunds and net sales in September 2026?",
+     "run_id": "20261006-170920-e2fb",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 8181
+    },
+    {
+     "question": "Did net sales from large customers change between August and September 2026?",
+     "run_id": "20261006-170922-82d6",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 7053
+    },
+    {
+     "question": "Did net sales from large customers change between August and September 2026?",
+     "run_id": "20261006-170929-6cf3",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6692
+    },
+    {
+     "question": "Did net sales from large customers change between August and September 2026?",
+     "run_id": "20261006-170930-1711",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6912
+    },
+    {
+     "question": "Why are sales down?",
+     "run_id": "20261006-170931-a894",
+     "status": "verified",
+     "pass": true,
+     "missing": [],
+     "queries": 2,
+     "query_errors": 0,
+     "tokens": 6273
+    },
+    {
+     "question": "Why are sales down?",
+     "run_id": "20261006-170933-f8be",
+     "status": "unverified",
+     "pass": false,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 0,
+     "tokens": 9274,
+     "issues": [
+      "prose amount 194000 cents is not a verified figure or a difference of two",
+      "prose amount 10000 cents is not a verified figure or a difference of two"
+     ]
+    },
+    {
+     "question": "Why are sales down?",
+     "run_id": "20261006-170937-d3ca",
+     "status": "unverified",
+     "pass": false,
+     "missing": [],
+     "queries": 3,
+     "query_errors": 1,
+     "tokens": 9549,
+     "issues": [
+      "prose amount 2500 cents is not a verified figure or a difference of two",
+      "prose amount 194000 cents is not a verified figure or a difference of two",
+      "prose amount 194000 cents is not a verified figure or a difference of two",
+      "prose amount 2500 cents is not a verified figure or a difference of two",
+      "prose amount 2500 cents is not a verified figure or a difference of two",
+      "prose amount 139000 cents is not a verified figure or a difference of two"
+     ]
+    }
+   ]
+  }
+ }
+}

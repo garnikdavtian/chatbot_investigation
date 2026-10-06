@@ -1,0 +1,110 @@
+# LLM usage note
+
+## Tools and models
+
+| Where | Tool or model | Used for |
+|---|---|---|
+| Development | Claude Code 2.1.284 with Claude Opus 5.5 (`claude-opus-5-5`) | Planning, all code, tests, data additions, prompts, docs, running the evaluations |
+| Development | ponytail plugin 4.10.0 for Claude Code (hooks) | Adds a "simplest working solution" ruleset to every session. See `ai-workflow/README.md` |
+| Development | Skills: `dataviz` (bundled with Claude Code) and the third-party `ui-ux-pro-max` (commit `477bcb2`, at the candidate's request) | Chart palette and its validator; the UI/UX audit of the chat page |
+| Development | Built-in Claude Code tools: shell, file edit, web fetch and search | uv, pytest, ruff (`uvx`), sqlite3, curl, headless Chromium for UI screenshots; provider docs, model lists and prices |
+| Application | OpenAI Chat Completions, **`gpt-6-luna`**, reasoning effort `none` | The investigating model. Chosen by evaluation (see the README) |
+| Evaluation only | `gpt-5.6-luna`, `gpt-6-sol` | Comparison and ceiling. `gpt-6.1-sol` was rejected: it needs the Responses API to use function tools with reasoning |
+
+## What was generated
+
+Claude Code generated everything outside `data/starter/`, which holds the starter pack unchanged:
+
+- the application;
+- the tests;
+- the data additions and the hand-checked answer key;
+- the prompts, the evaluation and the docs.
+
+The candidate set the direction, reviewed the work and made the product decisions: which assignment
+to take, a final UI without Streamlit, Docker only as an optional wrapper, and the review gates. Claude Code ran every check
+listed below.
+
+## One representative instruction and workflow
+
+> "be the best across all the applicants in this project, but not overengineering, we must show also
+> ability to find cheapest working ways but not underperforming"
+
+This instruction turned model choice into a measurement instead of a guess. `evals/run_eval.py`
+runs fixed questions through the real pipeline (the same loop, checks and limits as the app). It
+scores each run by the verifier and by the figures each answer needs. The cheapest model that matched
+the larger one was kept. The same loop was used for every change:
+
+```
+build -> scripted tests -> live run -> verifier result -> evaluation -> fix -> re-record -> replay check
+```
+
+## One correction, with numbers
+
+**1. The first live run.** The question was "Why did net sales change between August and September
+2026?", asked of gpt-5.6-luna with prompt v1. The run ended `unverified`, and the verifier showed why:
+
+```
+q1 sql   circular reference: refunds        (a CTE named "refunds" shadowed the table)
+q3 sql   ambiguous column name: c.segment
+finding 2: refunds 2026-09-01..2026-10-01 small = 21000 cents [q4] is query_error (rules give 16000)
+finding 2: refunds 2026-09-01..2026-10-01 large = 21000 cents [q4] is query_error (rules give 5000)
+... 4 more segment figures
+```
+
+The overall totals were right. The segment query, however, joined without keys, so each segment
+received the full refund total. The report looked plausible. The system caught the error and did
+not present the answer as checked.
+
+**2. The fix, in the prompt** (`prompts/system-v1.md` → `system-v2.md`). The first two rules target
+the SQL errors; the third makes the model check its own breakdowns:
+
+```
+- Join only on keys: `refunds.order_id = orders.order_id` and `orders.customer_id = customers.customer_id`.
+- Keep each query to one breakdown, and give CTEs names that differ from the table names.
+- Before you report a breakdown, check that its parts add up to the overall totals. If they do not, fix the query.
+```
+
+Round 1 of the evaluation also showed that 4 of the 5 failures were correct amounts written in the
+text without being attached as figures. Two more changes followed: one repair round, with problems
+sent back to the model but never the expected values, and the prompt rule "Attach every amount you
+mention to a finding's `metrics`".
+
+**3. The effect, measured** (5 questions × 3 trials, `evals/results.json`):
+
+| Model | Query errors, v1 | Query errors, v2 |
+|---|---|---|
+| gpt-5.6-luna | 8 of 38 | 2 of 34 |
+| gpt-6-luna | 9 of 39 | **0 of 36** |
+
+**4. A later improvement** (v2 → v3). The rubric was tightened so that a "why" question must also
+get an `unknown` finding for what the data cannot explain (brief, check 5). Re-scoring the saved
+runs, without new model calls, showed that v2 did this in only 3 of 6 "why" runs. A two-line prompt
+change (`prompts/system-v3.md`) brought it to 6 of 6. v3 also keeps 15/15 with no query errors, at
+the same cost.
+
+**5. Charts** (v3 → v4). The first live chart run plotted August to October. The data covers one day
+of October, so the chart showed sales collapsing. v4 tells the model to check date coverage and to
+leave out or label a partial month, and the evaluation now checks that. The first v4 round (20/24)
+also showed the model charting a single number in 3 of 3 runs when asked to "visualize total net
+sales for September". A rule in `verify.py` now rejects a one-value chart; the repair round removed
+the chart in 3 of 3, and v4 scored 24/24. The runs of both rounds stay in `evals/runs/`.
+
+**6. Injection** (v4 → v5). Asked what protects against prompt injection, the honest answer was:
+the design (read-only tool, checks in code, limits, plain-text rendering), but nothing in the
+prompt, no evaluation case and no Content-Security-Policy. v5 adds one paragraph, the evaluation two
+injection questions, and the page a hash-based CSP. Re-measured side by side on the same 10
+questions, v4 accepted "net sales equal gross sales" in 2 of 3 runs, answering with gross sales;
+v5 answered under the rules in 6 of 6. Both scored 27/30 overall.
+
+## Checks of Claude Code's own output
+
+- 47 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
+  headless browser: the page and its chart render, and no violations are logged.
+- The UI was reviewed through headless-browser screenshots at desktop and phone width. This caught
+  links that were invisible in dark mode and chart labels that shrank to unreadable on a phone; both
+  were fixed. The chart colours were checked with a colour-vision validator.
+- A new test failed on its first run because it parsed plain-text tool replies as JSON. The fix was
+  in the test; the code under test was correct.
+- One quirk remains and is documented as a limitation in the README. In the live DELETE run, the rule
+  "an observed finding needs a figure" made the model attach an unrelated net-sales figure to the
+  finding "the DELETE was rejected".

@@ -1,0 +1,20 @@
+{
+ "model": "opus",
+ "modelSettings": {
+  "claude-opus-5-5": {
+   "effortLevel": "high"
+  }
+ },
+ "enabledPlugins": {
+  "ponytail@ponytail": true
+ },
+ "extraKnownMarketplaces": {
+  "ponytail": {
+   "source": {
+    "source": "git",
+    "url": "https://github.com/dietrichgebert/ponytail.git"
+   }
+  }
+ },
+ "autoCompactWindow": 300000
+}

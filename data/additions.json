@@ -1,0 +1,226 @@
+{
+  "customers": [
+    {
+      "customer_id": "C3",
+      "segment": "small"
+    },
+    {
+      "customer_id": "C4",
+      "segment": "large"
+    },
+    {
+      "customer_id": "C5",
+      "segment": "small"
+    },
+    {
+      "customer_id": "C6",
+      "segment": "large"
+    },
+    {
+      "customer_id": "C7",
+      "segment": "small"
+    },
+    {
+      "customer_id": "C8",
+      "segment": "large"
+    },
+    {
+      "customer_id": "C9",
+      "segment": "small"
+    },
+    {
+      "customer_id": "C10",
+      "segment": "large"
+    }
+  ],
+  "orders": [
+    {
+      "order_id": "O5",
+      "customer_id": "C3",
+      "order_date": "2026-08-02",
+      "amount_cents": 12000
+    },
+    {
+      "order_id": "O6",
+      "customer_id": "C4",
+      "order_date": "2026-08-03",
+      "amount_cents": 25000
+    },
+    {
+      "order_id": "O7",
+      "customer_id": "C5",
+      "order_date": "2026-08-07",
+      "amount_cents": 8000
+    },
+    {
+      "order_id": "O8",
+      "customer_id": "C6",
+      "order_date": "2026-08-11",
+      "amount_cents": 30000
+    },
+    {
+      "order_id": "O9",
+      "customer_id": "C7",
+      "order_date": "2026-08-14",
+      "amount_cents": 6500
+    },
+    {
+      "order_id": "O10",
+      "customer_id": "C8",
+      "order_date": "2026-08-18",
+      "amount_cents": 22000
+    },
+    {
+      "order_id": "O11",
+      "customer_id": "C9",
+      "order_date": "2026-08-21",
+      "amount_cents": 9500
+    },
+    {
+      "order_id": "O12",
+      "customer_id": "C10",
+      "order_date": "2026-08-24",
+      "amount_cents": 18000
+    },
+    {
+      "order_id": "O13",
+      "customer_id": "C3",
+      "order_date": "2026-08-26",
+      "amount_cents": 7000
+    },
+    {
+      "order_id": "O14",
+      "customer_id": "C4",
+      "order_date": "2026-08-28",
+      "amount_cents": 15000
+    },
+    {
+      "order_id": "O15",
+      "customer_id": "C5",
+      "order_date": "2026-08-30",
+      "amount_cents": 11000
+    },
+    {
+      "order_id": "O16",
+      "customer_id": "C6",
+      "order_date": "2026-08-31",
+      "amount_cents": 20000
+    },
+    {
+      "order_id": "O17",
+      "customer_id": "C7",
+      "order_date": "2026-09-01",
+      "amount_cents": 10000
+    },
+    {
+      "order_id": "O18",
+      "customer_id": "C8",
+      "order_date": "2026-09-03",
+      "amount_cents": 26000
+    },
+    {
+      "order_id": "O19",
+      "customer_id": "C9",
+      "order_date": "2026-09-06",
+      "amount_cents": 9000
+    },
+    {
+      "order_id": "O20",
+      "customer_id": "C10",
+      "order_date": "2026-09-09",
+      "amount_cents": 21000
+    },
+    {
+      "order_id": "O21",
+      "customer_id": "C3",
+      "order_date": "2026-09-12",
+      "amount_cents": 13000
+    },
+    {
+      "order_id": "O22",
+      "customer_id": "C4",
+      "order_date": "2026-09-15",
+      "amount_cents": 24000
+    },
+    {
+      "order_id": "O23",
+      "customer_id": "C5",
+      "order_date": "2026-09-17",
+      "amount_cents": 7500
+    },
+    {
+      "order_id": "O24",
+      "customer_id": "C6",
+      "order_date": "2026-09-19",
+      "amount_cents": 28000
+    },
+    {
+      "order_id": "O25",
+      "customer_id": "C7",
+      "order_date": "2026-09-22",
+      "amount_cents": 8500
+    },
+    {
+      "order_id": "O26",
+      "customer_id": "C8",
+      "order_date": "2026-09-24",
+      "amount_cents": 16000
+    },
+    {
+      "order_id": "O27",
+      "customer_id": "C9",
+      "order_date": "2026-09-26",
+      "amount_cents": 6000
+    },
+    {
+      "order_id": "O28",
+      "customer_id": "C10",
+      "order_date": "2026-09-28",
+      "amount_cents": 19000
+    },
+    {
+      "order_id": "O29",
+      "customer_id": "C5",
+      "order_date": "2026-09-30",
+      "amount_cents": 6000
+    },
+    {
+      "order_id": "O30",
+      "customer_id": "C3",
+      "order_date": "2026-10-01",
+      "amount_cents": 14000
+    }
+  ],
+  "refunds": [
+    {
+      "refund_id": "RF4",
+      "order_id": "O13",
+      "refund_date": "2026-09-02",
+      "amount_cents": 7000
+    },
+    {
+      "refund_id": "RF5",
+      "order_id": "O16",
+      "refund_date": "2026-09-01",
+      "amount_cents": 5000
+    },
+    {
+      "refund_id": "RF6",
+      "order_id": "O9",
+      "refund_date": "2026-08-31",
+      "amount_cents": 1500
+    },
+    {
+      "refund_id": "RF7",
+      "order_id": "O21",
+      "refund_date": "2026-09-25",
+      "amount_cents": 6000
+    },
+    {
+      "refund_id": "RF8",
+      "order_id": "O27",
+      "refund_date": "2026-10-01",
+      "amount_cents": 2000
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "scope": "data/starter/seed.json + data/additions.json, i.e. data/investigation.sqlite",
+  "method": "Hand calculation from the row IDs listed here, using data/starter/domain.md. Not produced by the application. tests/test_data.py cross-checks it against investigator/calc.py and plain SQL.",
+  "periods": [
+    {
+      "start": "2026-08-01",
+      "end_exclusive": "2026-09-01",
+      "gross_cents": 194000,
+      "refunds_cents": 2500,
+      "net_cents": 191500,
+      "orders": ["O1", "O2", "O5", "O6", "O7", "O8", "O9", "O10", "O11", "O12", "O13", "O14", "O15", "O16"],
+      "refunds": ["RF1", "RF6"]
+    },
+    {
+      "start": "2026-09-01",
+      "end_exclusive": "2026-10-01",
+      "gross_cents": 204000,
+      "refunds_cents": 21000,
+      "net_cents": 183000,
+      "orders": ["O3", "O4", "O17", "O18", "O19", "O20", "O21", "O22", "O23", "O24", "O25", "O26", "O27", "O28", "O29"],
+      "refunds": ["RF2", "RF3", "RF4", "RF5", "RF7"]
+    }
+  ],
+  "net_change_cents": -8500,
+  "segments": {
+    "2026-08-01": {
+      "small": {"gross_cents": 59000, "refunds_cents": 2500, "net_cents": 56500},
+      "large": {"gross_cents": 135000, "refunds_cents": 0, "net_cents": 135000}
+    },
+    "2026-09-01": {
+      "small": {"gross_cents": 65000, "refunds_cents": 16000, "net_cents": 49000},
+      "large": {"gross_cents": 139000, "refunds_cents": 5000, "net_cents": 134000}
+    }
+  },
+  "traps": {
+    "naive_join_september_gross_cents": 209000,
+    "naive_join_note": "orders LEFT JOIN refunds repeats O3 (two refunds), adding 5000 to September gross.",
+    "refunds_by_order_date_september_cents": 11000,
+    "refunds_by_order_date_note": "Wrong rule: RF2+RF3+RF7+RF8 by order month. Correct rule is refund_date: RF2+RF3+RF4+RF5+RF7 = 21000."
+  }
+}

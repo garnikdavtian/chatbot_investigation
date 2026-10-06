@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Investigator</title>
+<style>
+/* Tokens. Neutral surfaces and one accent; text pairs meet WCAG AA (4.5:1) in both modes. */
+:root {
+  --bg: #f8fafc; --side: #f1f5f9; --panel: #fff; --sunken: #f8fafc; --text: #0f172a; --muted: #475569; --faint: #64748b;
+  --border: #e2e8f0; --border-strong: #cbd5e1; --accent: #4f46e5; --accent-soft: #eef2ff; --on-accent: #fff;
+  --user: #eef2ff; --hover: rgba(15, 23, 42, .05); --grid: #e9edf3; --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 16px rgba(15, 23, 42, .06);
+  --ok: #15803d; --ok-bg: #dcfce7; --warn: #a16207; --warn-bg: #fef9c3; --bad: #b91c1c; --bad-bg: #fee2e2; --idle: #475569; --idle-bg: #f1f5f9;
+  --observed: #1d4ed8; --inferred: #7e22ce; --unknown: #475569;
+  /* chart series: dataviz reference palette, validated for colour-vision separation against these surfaces */
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --side: #0b0d11; --panel: #171a21; --sunken: #12151b; --text: #e5e7eb; --muted: #9ca3af; --faint: #8b93a1;
+    --border: #262b36; --border-strong: #353b48; --accent: #818cf8; --accent-soft: #1e2140; --on-accent: #0f1115;
+    --user: #1e2235; --hover: rgba(255, 255, 255, .06); --grid: #232833; --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+    --ok: #4ade80; --ok-bg: #0d2818; --warn: #facc15; --warn-bg: #2a2308; --bad: #f87171; --bad-bg: #2d1316; --idle: #cbd5e1; --idle-bg: #1f2430;
+    --observed: #93c5fd; --inferred: #d8b4fe; --unknown: #cbd5e1;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 2px; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 8px; top: -100px; z-index: 40; background: var(--panel); padding: 8px 12px; border-radius: 8px; box-shadow: var(--shadow); }
+.skip:focus { top: 8px; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 15px; height: 15px; }
+.app { display: grid; grid-template-columns: 272px minmax(0, 1fr); height: 100vh; height: 100dvh; }
+
+/* Sidebar */
+aside { background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.brand { display: flex; gap: 10px; align-items: center; padding: 16px 16px 12px; }
+.logo { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; flex: none; }
+.brand strong { display: block; font-size: 15px; line-height: 1.2; }
+.brand small { display: block; font-size: 12px; color: var(--muted); }
+.btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel);
+  font-size: 14px; font-weight: 550; transition: background .15s var(--ease), border-color .15s var(--ease); }
+.btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--sunken); }
+.new { margin: 0 12px 16px; }
+.label { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0 16px 6px; margin: 0; letter-spacing: .02em; }
+nav { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+nav button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 8px; min-height: 44px; transition: background .15s var(--ease); }
+nav button:hover { background: var(--hover); }
+nav button[aria-current="true"] { background: var(--accent-soft); }
+nav .q { display: block; font-size: 14px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav .meta { display: flex; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 2px; }
+nav .meta .st { display: inline-flex; background: none; }
+.empty-list { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+.mode { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); padding: 12px 16px; border-top: 1px solid var(--border); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.dot.off { background: var(--faint); }
+
+/* Conversation */
+main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.top { display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid var(--border); min-height: 52px; }
+.top h1 { font-size: 15px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn { display: none; place-items: center; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); flex: none; }
+.scroll { flex: 1; overflow-y: auto; }
+.thread { max-width: 768px; margin: 0 auto; padding: 28px 24px 40px; display: flex; flex-direction: column; gap: 28px; }
+.user { align-self: flex-end; max-width: min(85%, 600px); background: var(--user); border-radius: 18px 18px 4px 18px; padding: 10px 16px; white-space: pre-wrap; overflow-wrap: anywhere; scroll-margin-top: 16px; }
+.bot { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.bot-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.avatar { width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.who { font-weight: 600; font-size: 14px; }
+.meta-text { font-size: 13px; color: var(--muted); }
+.answer { font-size: 17px; line-height: 1.65; margin: 0; max-width: 70ch; }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 2px 8px 2px 6px; border-radius: 999px; white-space: nowrap; line-height: 1.5; }
+.s-verified { color: var(--ok); background: var(--ok-bg); } .s-unverified { color: var(--warn); background: var(--warn-bg); }
+.s-incomplete { color: var(--idle); background: var(--idle-bg); } .s-failed { color: var(--bad); background: var(--bad-bg); }
+.banner { display: flex; gap: 10px; border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+.banner ul { margin: 6px 0 0; padding-left: 18px; }
+.banner p { margin: 0; }
+h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+.findings { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.findings li { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; }
+.kind { font-size: 12px; font-weight: 600; padding-top: 3px; }
+.k-observed { color: var(--observed); } .k-inferred { color: var(--inferred); } .k-unknown { color: var(--unknown); }
+.proof { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.proof .ok { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); }
+.chip { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
+  font: 500 12px var(--mono); color: var(--accent); vertical-align: middle; }
+.chip:hover { border-color: var(--accent); }
+.fail { color: var(--bad); font-size: 13px; }
+.notes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 14px; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.notes li + li { margin-top: 4px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+.evidence > summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; list-style: none; min-height: 48px; font-size: 14px; border-radius: 14px; cursor: pointer; }
+.evidence > summary::-webkit-details-marker { display: none; }
+.evidence > summary:hover { background: var(--hover); }
+.evidence > summary .chev { margin-left: auto; color: var(--muted); transition: transform .2s var(--ease); }
+.evidence[open] > summary .chev { transform: rotate(180deg); }
+.evidence[open] > summary { border-bottom: 1px solid var(--border); border-radius: 14px 14px 0 0; }
+.evidence .body { padding: 14px; display: flex; flex-direction: column; gap: 18px; }
+.ev-icon { color: var(--ok); display: grid; } .ev-icon.bad { color: var(--warn); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.scrollx { overflow-x: auto; }
+.caption { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+details.query { border: 1px solid var(--border); border-radius: 10px; background: var(--sunken); }
+details.query + details.query { margin-top: 8px; }
+details.query > summary { padding: 10px 12px; font-size: 14px; min-height: 44px; display: flex; gap: 8px; align-items: center; cursor: pointer; }
+details.query[open] > summary { border-bottom: 1px solid var(--border); }
+details.query .qbody { padding: 12px; overflow-x: auto; }
+details.query.err > summary { color: var(--bad); }
+.qid { font: 600 12px var(--mono); }
+pre { font: 13px/1.5 var(--mono); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; margin: 0 0 10px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: -6px; }
+.ghost { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--muted);
+  font-size: 13px; text-decoration: none; transition: background .15s var(--ease), color .15s var(--ease); }
+.ghost:hover { background: var(--hover); color: var(--text); }
+.actions [role="status"] { font-size: 13px; color: var(--muted); }
+
+/* Chart */
+.chart { padding: 16px; }
+.chart-title { font-weight: 600; margin: 0; font-size: 15px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.legend i, .tip i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.plot { position: relative; margin-top: 10px; min-height: 240px; }
+.plot svg { width: 100%; height: 240px; display: block; overflow: visible; }
+.plot .grid { stroke: var(--grid); stroke-width: 1; }
+.plot .axis { stroke: var(--border-strong); stroke-width: 1; }
+.plot .tick { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.plot .hl { fill: var(--hover); }
+.plot .cross { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; }
+.plot .hit { fill: transparent; outline: none; }
+.plot .hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.tip { position: absolute; z-index: 10; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 13px; box-shadow: var(--shadow); white-space: nowrap; }
+.tip b { font-variant-numeric: tabular-nums; margin-left: 12px; }
+.tip div { display: flex; justify-content: space-between; align-items: center; }
+.chart-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+
+/* Progress while the model works */
+.steps { list-style: none; margin: 0; padding: 0 0 0 4px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--muted); }
+.steps li { display: flex; gap: 10px; align-items: center; }
+.steps .done svg { color: var(--ok); } .steps .err { color: var(--bad); }
+.steps .now { color: var(--text); }
+.spinner { width: 15px; height: 15px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty conversation */
+.thread.empty { min-height: 100%; justify-content: center; }
+.hello { text-align: center; }
+.hello .logo { width: 48px; height: 48px; border-radius: 14px; margin: 0 auto 16px; }
+.hello .logo svg.i { width: 24px; height: 24px; }
+.hello h2 { font-size: 28px; line-height: 1.25; font-weight: 650; margin: 0 0 8px; text-wrap: balance; }
+.hello p { color: var(--muted); margin: 0 auto; max-width: 56ch; }
+.suggest { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 28px; text-align: left; }
+.suggest button { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel);
+  text-align: left; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+.suggest button:hover:not(:disabled) { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.suggest .si { color: var(--accent); background: var(--accent-soft); border-radius: 8px; width: 32px; height: 32px; display: grid; place-items: center; flex: none; }
+.suggest strong { display: block; font-size: 14px; }
+.suggest span.d { display: block; font-size: 13px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+
+/* Composer */
+.composer { padding: 0 24px 16px; }
+.composer form { max-width: 768px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 20px; padding: 8px 8px 8px 18px; box-shadow: var(--shadow); transition: border-color .15s var(--ease); }
+.composer form:focus-within { border-color: var(--accent); }
+.composer textarea { flex: 1; border: 0; outline: 0; resize: none; background: none; color: inherit; font: inherit; padding: 8px 0; max-height: 200px; line-height: 1.5; }
+.composer textarea::placeholder { color: var(--faint); }
+.send { display: grid; place-items: center; border: 0; border-radius: 12px; background: var(--accent); color: var(--on-accent); width: 40px; height: 40px; flex: none; }
+.hint { max-width: 768px; margin: 8px auto 0; text-align: center; font-size: 12px; color: var(--muted); }
+.scrim { display: none; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } .spinner { animation-duration: 2.4s; } }
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  aside { position: fixed; z-index: 30; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-100%); transition: transform .22s var(--ease); }
+  aside.open { transform: none; box-shadow: var(--shadow); }
+  .scrim:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .35); }
+  .icon-btn { display: grid; }
+  .top { padding: 0 12px; }
+  .thread { padding: 20px 16px 32px; }
+  .composer { padding: 0 12px 12px; }
+  .suggest, .notes { grid-template-columns: 1fr; }
+  .findings li { grid-template-columns: 1fr; gap: 2px; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#q">Skip to the question box</a>
+<div class="app">
+  <aside id="side" aria-label="Chat history">
+    <div class="brand"><span class="logo"><span data-icon="search"></span></span><div><strong>Data Investigator</strong><small>Answers with checked figures</small></div></div>
+    <button class="btn new" id="new" type="button"><span data-icon="plus"></span>New chat</button>
+    <h2 class="label">Recent</h2>
+    <nav id="list"></nav>
+    <div class="mode" id="mode"></div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+  <main>
+    <header class="top">
+      <button class="icon-btn" id="menu" type="button" aria-label="Show chat history" aria-expanded="false" aria-controls="side"><span data-icon="menu"></span></button>
+      <h1 id="title">New chat</h1>
+    </header>
+    <div class="scroll" id="scroll"><div class="thread" id="thread"></div></div>
+    <div class="composer">
+      <form id="composer">
+        <label for="q" class="sr">Question</label>
+        <textarea id="q" rows="1" maxlength="500" aria-describedby="limits"></textarea>
+        <button class="send" type="submit" aria-label="Send question"><span data-icon="arrowUp"></span></button>
+      </form>
+      <p class="hint" id="limits"></p>
+    </div>
+  </main>
+</div>
+<script>
+"use strict";
+// Lucide icon geometry (ISC licence), drawn inline: no icon font, no CDN.
+const ICONS = {
+  search: [["circle", {cx: 11, cy: 11, r: 8}], "m21 21-4.3-4.3"],
+  plus: ["M5 12h14", "M12 5v14"],
+  menu: ["M4 6h16", "M4 12h16", "M4 18h16"],
+  arrowUp: ["m5 12 7-7 7 7", "M12 19V5"],
+  check: ["M20 6 9 17l-5-5"],
+  x: ["M18 6 6 18", "m6 6 12 12"],
+  circleCheck: [["circle", {cx: 12, cy: 12, r: 10}], "m9 12 2 2 4-4"],
+  alert: ["m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "M12 9v4", "M12 17h.01"],
+  pause: [["circle", {cx: 12, cy: 12, r: 10}], "M10 15V9", "M14 15V9"],
+  circleX: [["circle", {cx: 12, cy: 12, r: 10}], "m15 9-6 6", "m9 9 6 6"],
+  shield: ["M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z", "m9 12 2 2 4-4"],
+  chevron: ["m6 9 6 6 6-6"],
+  copy: [["rect", {x: 8, y: 8, width: 14, height: 14, rx: 2}], "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"],
+  replay: ["M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5"],
+  download: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5", "M12 15V3"],
+  database: [["ellipse", {cx: 12, cy: 5, rx: 9, ry: 3}], "M3 5V19A9 3 0 0 0 21 19V5", "M3 12A9 3 0 0 0 21 12"],
+  trend: ["M22 7 13.5 15.5 8.5 10.5 2 17", "M16 7h6v6"],
+  users: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", ["circle", {cx: 9, cy: 7, r: 4}], "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
+  lineChart: ["M3 3v16a2 2 0 0 0 2 2h16", "m19 9-5 5-4-4-3 3"],
+  barChart: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"],
+  table: [["rect", {x: 3, y: 3, width: 18, height: 18, rx: 2}], "M3 9h18", "M3 15h18", "M12 3v18"],
+};
+const SUGGESTIONS = [
+  {icon: "trend", title: "Explain a change", text: "Why did net sales change between August and September 2026?"},
+  {icon: "users", title: "Find what drove it", text: "Which customer segment drove the change in refunds from August to September 2026?"},
+  {icon: "lineChart", title: "Visualize by month", text: "Visualize gross sales, refunds and net sales by month"},
+  {icon: "barChart", title: "Compare segments", text: "Plot September 2026 net sales by customer segment"}];
+const STATUS = {
+  verified: {label: "Verified", icon: "circleCheck", note: "Every figure is in its query's result and equals the business rules."},
+  unverified: {label: "Unverified", icon: "alert", note: "Some checks failed. The problems are listed here; do not rely on those figures."},
+  incomplete: {label: "Incomplete", icon: "pause", note: "A limit stopped the model before it finished. What it found so far is shown below."},
+  failed: {label: "Failed", icon: "circleX", note: "This run failed. Any queries that ran are shown below."}};
+const FIG = {query_error: "the query computed a wrong value", unsupported: "not in the cited result", wrong: "wrong and not in the cited result"};
+const METRICS = ["gross", "refunds", "net"];
+const $ = id => document.getElementById(id);
+// thread = {root, runs: [full run records]}. nav changes on every navigation, so a late reply cannot draw into another view.
+let config = {}, runs = [], thread = null, pending = null, notice = null, nav = 0;
+
+// Text only: model output never becomes HTML.
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
+  return el;
+}
+function s(tag, attrs = {}, text) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text != null) el.textContent = text;
+  return el;
+}
+function icon(name, cls = "") {
+  const svg = s("svg", {class: `i ${cls}`, viewBox: "0 0 24 24", "aria-hidden": "true"});
+  for (const part of ICONS[name]) svg.append(typeof part === "string" ? s("path", {d: part}) : s(part[0], part[1]));
+  return svg;
+}
+// Mirrors report.fmt_cents / report.prose: integer cents in, dollars out.
+const fmtCents = c => (c < 0 ? "-" : "") + "$" + Math.floor(Math.abs(c) / 100).toLocaleString("en-US") + "." +
+  String(Math.abs(c) % 100).padStart(2, "0");
+const prose = t => t.replace(/(-?\d[\d,]*)\s*cents\b/g, (_, n) => fmtCents(parseInt(n.replace(/,/g, ""), 10)));
+const month = (y, m) => new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en", {month: "short", year: "numeric", timeZone: "UTC"});
+function period(a, b) {
+  const [ya, ma] = a.split("-").map(Number), [yb, mb] = b.split("-").map(Number);
+  if (a.endsWith("-01") && b.endsWith("-01") && yb * 12 + mb - (ya * 12 + ma) === 1) return month(ya, ma);
+  return `${a} to ${b} (excl.)`;
+}
+const figName = x => `${x.metric} ${period(x.period_start, x.period_end_exclusive)}${x.segment ? " " + x.segment : ""}`;
+const when = iso => new Date(iso).toLocaleString("en", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+const badge = status => h("span", {class: `badge s-${status}`, title: STATUS[status]?.note || ""}, icon(STATUS[status]?.icon || "alert", "sm"), STATUS[status]?.label || status);
+
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+// /api/ask answers with one JSON object per line: {"progress": ...} after each tool call, then {"run": ...}.
+async function askStream(body, onProgress) {
+  const r = await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!r.ok) {
+    let message = r.statusText;
+    try { message = (await r.json()).error || message; } catch { /* not JSON */ }
+    throw new Error(message);
+  }
+  const reader = r.body.getReader(), decoder = new TextDecoder();
+  let buffer = "", run = null;
+  for (;;) {
+    const {value, done} = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), {stream: !done});
+    let i;
+    while ((i = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, i).trim();
+      buffer = buffer.slice(i + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line);
+      if (msg.run) run = msg.run; else onProgress(msg.progress);
+    }
+    if (done) break;
+  }
+  if (!run) throw new Error("The connection closed before the answer arrived.");
+  return run;
+}
+
+// ---- threads: a question plus its follow-ups, found through parent_run_id
+function rootOf(id) {
+  const byId = new Map(runs.map(r => [r.run_id, r]));
+  for (let r = byId.get(id); r?.parent_run_id && byId.has(r.parent_run_id);) { id = r.parent_run_id; r = byId.get(id); }
+  return id;
+}
+function threads() {
+  const groups = new Map();
+  for (const r of runs) {
+    const root = rootOf(r.run_id);
+    groups.set(root, [...(groups.get(root) || []), r]);
+  }
+  return [...groups.entries()].map(([root, items]) => ({root, items: items.sort((a, b) => a.created_at.localeCompare(b.created_at))}))
+    .sort((a, b) => b.items.at(-1).created_at.localeCompare(a.items.at(-1).created_at));
+}
+function renderList() {
+  const list = threads();
+  $("list").replaceChildren(...(list.length ? list.map(t => {
+    const first = t.items[0], last = t.items.at(-1), st = STATUS[last.status] || {};
+    const more = t.items.length > 1 ? ` · ${t.items.length - 1} follow-up${t.items.length > 2 ? "s" : ""}` : "";
+    return h("button", {type: "button", "aria-current": String(thread?.root === t.root), title: first.question, onclick: () => go(t.root)},
+      h("span", {class: "q"}, first.question),
+      h("span", {class: "meta"}, h("span", {class: `st s-${last.status}`}, icon(st.icon || "alert", "sm")),
+        `${st.label || last.status}${more} · ${when(last.created_at)}`));
+  }) : [h("p", {class: "empty-list"}, "Your chats will appear here.")]));
+}
+
+// ---- one assistant message per run
+const queryButton = (run, qid) => h("button", {type: "button", class: "chip", title: `Show ${qid}: its SQL and result`,
+  onclick: () => showQuery(run.run_id, qid)}, icon("database", "sm"), qid);
+
+const resultTable = (columns, rows, fmt = v => v) => rows.length
+  ? h("div", {class: "scrollx"}, h("table", {}, h("thead", {}, h("tr", {}, columns.map(c => h("th", {}, c)))),
+      h("tbody", {}, rows.map(row => h("tr", {}, row.map((v, i) => h("td", {class: typeof v === "number" ? "num" : ""}, v == null ? "NULL" : fmt(v, columns[i]))))))))
+  : h("p", {class: "caption", style: "margin:0"}, "Empty result: no rows matched.");
+
+function figureTable(run) {
+  const seen = new Map();
+  for (const f of run.verification?.figures || []) {
+    if (f.status !== "ok") continue;  // only figures that passed both checks
+    const key = `${f.period_start}|${f.period_end_exclusive}|${f.segment ?? ""}`;
+    if (!seen.has(key)) seen.set(key, {label: period(f.period_start, f.period_end_exclusive), segment: f.segment || "All customers", start: f.period_start});
+    seen.get(key)[f.metric] = f.value_cents;
+  }
+  const rows = [...seen.values()].sort((a, b) => a.segment.localeCompare(b.segment) || a.start.localeCompare(b.start));
+  if (!rows.length) return null;
+  const cols = METRICS.filter(m => rows.some(r => r[m] != null));
+  return h("section", {}, h("h3", {}, "Checked figures"),
+    h("div", {class: "scrollx"}, h("table", {},
+      h("thead", {}, h("tr", {}, h("th", {}, "Period"), h("th", {}, "Customers"), cols.map(m => h("th", {class: "num"}, m[0].toUpperCase() + m.slice(1))))),
+      h("tbody", {}, rows.map(r => h("tr", {}, h("td", {}, r.label), h("td", {}, r.segment),
+        cols.map(m => h("td", {class: "num"}, r[m] == null ? "—" : fmtCents(r[m])))))))),
+    h("p", {class: "caption"}, "Each value is a cell of its query's result and equals the business rules computed in code."));
+}
+
+function queriesView(run) {
+  if (!run.queries.length) return h("p", {class: "caption", style: "margin:0"}, "No queries ran.");
+  return h("section", {}, h("h3", {}, `Queries · ${run.queries.length} of ${run.config.max_queries} attempts (errors count)`),
+    run.queries.map(q => h("details", {class: "query" + (q.error ? " err" : ""), id: `q-${run.run_id}-${q.id}`},
+      h("summary", {}, h("span", {class: "qid"}, q.id), h("span", {}, q.purpose),
+        h("span", {class: "meta-text", style: "margin-left:auto;white-space:nowrap"},
+          q.error ? q.error : `${q.rows.length} row${q.rows.length === 1 ? "" : "s"}${q.truncated ? ", truncated" : ""} · ${q.elapsed_ms} ms`)),
+      h("div", {class: "qbody"}, h("pre", {}, q.sql),
+        q.error ? h("p", {class: "fail", style: "margin:0"}, q.message) : resultTable(q.columns, q.rows)))));
+}
+
+function evidence(run) {
+  const figs = run.verification?.figures || [], ok = figs.filter(f => f.status === "ok").length, clean = figs.length > 0 && ok === figs.length;
+  const parts = [figs.length ? `${ok} of ${figs.length} figures checked` : "no figures to check", `${run.queries.length} of ${run.config.max_queries} queries`];
+  if (run.repairs.length) parts.push(`${run.repairs.length} repair round`);
+  const body = h("div", {class: "body"}, figureTable(run),
+    run.repairs.map((r, n) => h("section", {}, h("h3", {}, `Repair round ${n + 1}`),
+      h("p", {class: "caption", style: "margin:0 0 6px"}, "The first report failed these checks and went back to the model, without the expected values:"),
+      h("ul", {style: "margin:0;padding-left:18px;font-size:14px"}, r.verification.issues.map(i => h("li", {}, prose(i)))))),
+    queriesView(run));
+  return h("details", {class: "card evidence", id: `ev-${run.run_id}`},
+    h("summary", {}, h("span", {class: "ev-icon" + (clean ? "" : " bad")}, icon(clean ? "shield" : "alert")),
+      h("span", {}, h("strong", {style: "font-weight:600"}, "How this was checked"), h("span", {class: "meta-text"}, " · " + parts.join(" · "))),
+      h("span", {class: "chev"}, icon("chevron"))), body);
+}
+
+function findingsView(run) {
+  const rep = run.report, figs = run.verification?.figures || [];
+  if (!rep.findings.length) return null;
+  return h("section", {}, h("h3", {}, "Findings"), h("ul", {class: "findings"}, rep.findings.map((f, i) => {
+    const mine = figs.filter(x => x.finding === i), good = mine.filter(x => x.status === "ok"), bad = mine.filter(x => x.status !== "ok");
+    return h("li", {}, h("span", {class: `kind k-${f.kind}`}, f.kind),
+      h("div", {}, prose(f.statement),
+        mine.length ? h("div", {class: "proof"},
+          good.length ? h("span", {class: "ok", title: good.map(x => `${figName(x)}: ${fmtCents(x.value_cents)}`).join("\n")},
+            icon("check", "sm"), `${good.length} figure${good.length > 1 ? "s" : ""} checked`) : null,
+          bad.map(x => h("span", {class: "fail"}, `${figName(x)}: ${fmtCents(x.value_cents)} is ${FIG[x.status]}` +
+            (x.expected_cents == null ? "" : `; the rules give ${fmtCents(x.expected_cents)}`))),
+          [...new Set(mine.map(x => x.query_id))].map(q => queryButton(run, q))) : null));
+  })));
+}
+
+function botMsg(run) {
+  const rep = run.report, ver = run.verification || {}, st = STATUS[run.status] || {};
+  const replayOut = h("span", {role: "status"});
+  const parts = [h("div", {class: "bot-head"}, h("span", {class: "avatar"}, icon("search", "sm")), h("span", {class: "who"}, "Assistant"),
+    badge(run.status), h("span", {class: "meta-text"}, run.config.model))];
+  if (run.status !== "verified")
+    parts.push(h("div", {class: `banner s-${run.status}`, role: "note"}, icon(st.icon || "alert"),
+      h("div", {}, h("p", {}, h("strong", {}, st.note || "")), run.error ? h("p", {}, run.error) : null,
+        ver.issues?.length ? h("ul", {}, ver.issues.map(i => h("li", {}, prose(i)))) : null)));
+  if (rep) {
+    parts.push(h("p", {class: "answer"}, prose(rep.summary)), chartView(run), findingsView(run));
+    if (rep.assumptions.length || rep.open_questions.length)
+      parts.push(h("div", {class: "notes"},
+        h("section", {}, h("h3", {}, "Assumptions"), rep.assumptions.length ? h("ul", {}, rep.assumptions.map(a => h("li", {}, prose(a)))) : h("p", {style: "margin:0"}, "None stated.")),
+        h("section", {}, h("h3", {}, "Open questions"), rep.open_questions.length ? h("ul", {}, rep.open_questions.map(a => h("li", {}, prose(a)))) : h("p", {style: "margin:0"}, "None."))));
+  }
+  parts.push(evidence(run), h("div", {class: "actions"},
+    rep ? h("button", {type: "button", class: "ghost", onclick: e => copyAnswer(e.currentTarget, rep)}, icon("copy", "sm"), h("span", {}, "Copy answer")) : null,
+    h("button", {type: "button", class: "ghost", title: "Re-run the recorded model responses: same SQL, results and checks, no API call",
+      onclick: () => replay(run.run_id, replayOut)}, icon("replay", "sm"), "Replay"),
+    h("a", {class: "ghost", href: `/api/runs/${run.run_id}/report.md`}, icon("download", "sm"), "Export .md"),
+    replayOut));
+  return h("article", {class: "bot", id: `run-${run.run_id}`, "aria-label": "Answer"}, parts);
+}
+
+// The chart spec names a query and its columns; the marks are that query's executed rows.
+function chartView(run) {
+  const c = run.report?.chart, q = c && run.queries.find(x => x.id === c.query_id);
+  if (!q || q.error || !q.rows.length) return null;
+  const at = n => q.columns.indexOf(n), xi = at(c.x), gi = c.group ? at(c.group) : -1, yi = c.y.map(at);
+  if (xi < 0 || yi.includes(-1) || (c.group && gi < 0)) return null;
+  const key = v => String(v ?? "NULL"), xs = [...new Set(q.rows.map(r => key(r[xi])))];
+  const series = c.group
+    ? [...new Set(q.rows.map(r => key(r[gi])))].map(g => ({name: g, at: new Map(q.rows.filter(r => key(r[gi]) === g).map(r => [key(r[xi]), r[yi[0]]]))}))
+    : c.y.map((name, k) => ({name: name.replace(/_cents$/, ""), at: new Map(q.rows.map(r => [key(r[xi]), r[yi[k]]]))}));
+  const vals = series.flatMap(sr => [...sr.at.values()]);
+  if (series.length > 4 || vals.some(v => typeof v !== "number")) return null;
+  const fmt = v => c.unit === "cents" ? fmtCents(v) : v.toLocaleString("en-US");
+  const compact = v => (v < 0 ? "-" : "") + (c.unit === "cents" ? "$" : "") +
+    (Math.abs(v) / (c.unit === "cents" ? 100 : 1)).toLocaleString("en-US", {notation: "compact", maximumFractionDigits: 1});
+  const fmtX = x => { const m = /^(\d{4})-(\d{2})$/.exec(x); return m ? month(+m[1], +m[2]) : x; };
+  const color = k => `var(--c${k + 1})`;
+  const valuesAt = x => series.map(sr => `${sr.name} ${sr.at.has(x) ? fmt(sr.at.get(x)) : "none"}`).join(", ");
+
+  // Drawn at the plot's real width (and again when it changes), so text stays 12px from phone to desktop.
+  const tip = h("div", {class: "tip", "aria-hidden": "true"}), plot = h("div", {class: "plot"});
+  tip.hidden = true;
+  let drawnAt = 0;
+  new ResizeObserver(([entry]) => {
+    const width = Math.round(entry.contentRect.width);
+    if (width > 0 && Math.abs(width - drawnAt) > 4) { drawnAt = width; plot.replaceChildren(draw(width), tip); }
+  }).observe(plot);
+  function draw(W) {
+    const H = 240, L = 56, R = 8, T = 8, B = 28, pw = W - L - R, ph = H - T - B;
+    let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+    const raw = (hi - lo) / 4 || 1, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
+    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step || step;
+    const y = v => T + (hi - v) / (hi - lo) * ph, bw = pw / xs.length, cx = i => L + bw * (i + .5);
+    const svg = s("svg", {viewBox: `0 0 ${W} ${H}`, role: "group", "aria-label": `${c.title}. ` + xs.map(x => `${fmtX(x)}: ${valuesAt(x)}`).join("; ")});
+    const hl = c.kind === "bar" ? s("rect", {class: "hl", y: T, width: bw, height: ph, rx: 6}) : s("line", {class: "cross", y1: T, y2: T + ph});
+    hl.style.visibility = "hidden";
+    svg.append(hl);
+    for (let k = 0, n = Math.round((hi - lo) / step); k <= n; k++) {
+      const v = lo + k * step;
+      svg.append(s("line", {class: Math.abs(v) < step / 1e6 ? "axis" : "grid", x1: L, x2: W - R, y1: y(v), y2: y(v)}),
+        s("text", {class: "tick", x: L - 8, y: y(v) + 4, "text-anchor": "end"}, compact(v)));
+    }
+    const every = Math.ceil(xs.length / Math.max(2, Math.floor(pw / 90)));  // skip labels rather than crowd them
+    xs.forEach((x, i) => { if (i % every === 0) svg.append(s("text", {class: "tick", x: cx(i), y: H - 6, "text-anchor": "middle"}, fmtX(x))); });
+    if (c.kind === "bar") {
+      const gw = Math.min(bw * .72, series.length * 44), w = (gw - 2 * (series.length - 1)) / series.length;  // 2px gap between bars
+      series.forEach((sr, k) => xs.forEach((x, i) => {
+        const v = sr.at.get(x);
+        if (v == null) return;
+        const x0 = cx(i) - gw / 2 + k * (w + 2), y0 = y(0), y1 = y(v), r = Math.min(4, w / 2, Math.abs(y0 - y1)), d = v < 0 ? -1 : 1;
+        svg.append(s("path", {style: `fill:${color(k)}`,  // anchored at zero, rounded at the data end
+          d: `M${x0},${y0}V${y1 + d * r}Q${x0},${y1} ${x0 + r},${y1}H${x0 + w - r}Q${x0 + w},${y1} ${x0 + w},${y1 + d * r}V${y0}Z`}));
+      }));
+    } else series.forEach((sr, k) => {
+      const pts = xs.map((x, i) => [i, sr.at.get(x)]).filter(([, v]) => v != null);
+      svg.append(s("polyline", {style: `stroke:${color(k)}`, fill: "none", "stroke-width": 2, "stroke-linejoin": "round",
+        points: pts.map(([i, v]) => `${cx(i)},${y(v)}`).join(" ")}));
+      for (const [i, v] of pts) svg.append(s("circle", {style: `fill:${color(k)};stroke:var(--panel)`, "stroke-width": 2, r: 4.5, cx: cx(i), cy: y(v)}));
+    });
+
+    const show = (i, px, py) => {
+      if (c.kind === "bar") hl.setAttribute("x", L + bw * i); else { hl.setAttribute("x1", cx(i)); hl.setAttribute("x2", cx(i)); }
+      hl.style.visibility = "visible";
+      tip.replaceChildren(h("strong", {style: "display:block;margin-bottom:2px"}, fmtX(xs[i])),
+        ...series.map((sr, k) => h("div", {}, h("span", {}, h("i", {style: `background:${color(k)}`}), sr.name), h("b", {}, sr.at.has(xs[i]) ? fmt(sr.at.get(xs[i])) : "—"))));
+      tip.hidden = false;
+      const width = plot.clientWidth;
+      tip.style.left = Math.max(0, px + 14 + tip.offsetWidth > width ? px - 14 - tip.offsetWidth : px + 14) + "px";
+      tip.style.top = Math.max(0, py - tip.offsetHeight - 12) + "px";
+    };
+    const hide = () => { tip.hidden = true; hl.style.visibility = "hidden"; };
+    xs.forEach((x, i) => {  // one hit area per x value: bigger than the marks, reachable by Tab
+      const hit = s("rect", {class: "hit", x: L + bw * i, y: 0, width: bw, height: H, tabindex: 0, rx: 6, role: "img", "aria-label": `${fmtX(x)}: ${valuesAt(x)}`});
+      hit.addEventListener("pointermove", e => { const b = plot.getBoundingClientRect(); show(i, e.clientX - b.left, e.clientY - b.top); });
+      hit.addEventListener("focus", () => { const scale = plot.clientWidth / W; show(i, cx(i) * scale, (T + ph / 3) * scale); });
+      hit.addEventListener("blur", hide);
+      svg.append(hit);
+    });
+    svg.addEventListener("pointerleave", hide);
+    return svg;
+  }
+
+  const data = h("div", {hidden: true, style: "margin-top:10px"}, resultTable(q.columns, q.rows,
+    (v, col) => c.unit === "cents" && c.y.includes(col) && typeof v === "number" ? fmtCents(v) : v));
+  const label = h("span", {}, "Show data");
+  const toggle = h("button", {type: "button", class: "ghost", "aria-expanded": "false", onclick: () => {
+    data.hidden = !data.hidden; toggle.setAttribute("aria-expanded", String(!data.hidden));
+    label.textContent = data.hidden ? "Show data" : "Hide data";
+  }}, icon("table", "sm"), label);
+  return h("section", {class: "card chart", "aria-label": "Chart"},
+    h("p", {class: "chart-title"}, c.title),
+    series.length > 1 ? h("div", {class: "legend"}, series.map((sr, k) => h("span", {}, h("i", {style: `background:${color(k)}`}), sr.name))) : null,
+    plot,
+    h("div", {class: "chart-foot"}, h("span", {class: "caption", style: "margin:0"}, "Drawn from the rows of ", queryButton(run, c.query_id),
+      " as returned. The chart's values are not rule-checked; the checked figures are."), toggle),
+    data);
+}
+
+function showQuery(runId, qid) {
+  const ev = $(`ev-${runId}`), el = $(`q-${runId}-${qid}`);
+  if (ev) ev.open = true;
+  if (!el) return;
+  el.open = true;
+  el.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center"});
+  el.querySelector("summary").focus({preventScroll: true});
+}
+async function copyAnswer(btn, rep) {
+  const label = btn.lastChild;
+  try { await navigator.clipboard.writeText(prose(rep.summary)); label.textContent = "Copied"; }
+  catch { label.textContent = "Copy failed"; }
+  setTimeout(() => { label.textContent = "Copy answer"; }, 2000);
+}
+async function replay(id, out) {
+  out.textContent = "Replaying the recorded model responses…";
+  try {
+    const r = await api(`/api/runs/${id}/replay`, {});
+    out.textContent = r.diffs.length ? `Replay differs: ${r.diffs.join("; ")}` : `Reproduced: same queries, results and checks (${r.status}), no API call.`;
+  } catch (e) { out.textContent = `Replay failed: ${e.message}`; }
+}
+
+// ---- the message shown while the model works, fed by the streamed progress
+function pendingView() {
+  const p = pending.progress || {queries: [], submitted: false, repairs: 0};
+  const now = p.repairs ? "Some checks failed: the model is revising its report" :
+    p.submitted ? "Checking every figure against the business rules" :
+    p.queries.length ? "Reading the results and choosing the next step" : "Planning the first query";
+  return [h("div", {class: "bot-head"}, h("span", {class: "avatar"}, icon("search", "sm")), h("span", {class: "who"}, "Assistant"),
+      h("span", {class: "meta-text", id: "elapsed"}, elapsed())),
+    h("ol", {class: "steps", "aria-label": "Progress"},
+      p.queries.map(q => h("li", {class: q.error ? "err" : "done"}, icon(q.error ? "x" : "check", "sm"),
+        h("span", {}, h("span", {class: "qid"}, q.id), ` ${q.purpose} · `, q.error ? q.error : `${q.rows} row${q.rows === 1 ? "" : "s"}`))),
+      h("li", {class: "now"}, h("span", {class: "spinner", "aria-hidden": "true"}), now))];
+}
+const elapsed = () => pending ? `${Math.round((Date.now() - pending.t0) / 1000)} s · at most ${config.max_queries} read-only queries` : "";
+setInterval(() => { const el = $("elapsed"); if (el) el.textContent = elapsed(); }, 1000);
+
+// ---- views
+function emptyView() {
+  return h("div", {class: "hello"}, h("div", {class: "logo"}, icon("search")),
+    h("h2", {}, "What do you want to know?"),
+    h("p", {}, "Ask about sales, refunds or customer segments. The model explores the data with read-only SQL, and code checks every figure it reports. Ask for a chart when you want one."),
+    h("div", {class: "suggest"}, SUGGESTIONS.map(sg => h("button", {type: "button", disabled: !config.live, onclick: () => ask(sg.text)},
+      h("span", {class: "si"}, icon(sg.icon)), h("span", {}, h("strong", {}, sg.title), h("span", {class: "d"}, sg.text))))),
+    config.live ? null : h("p", {style: "margin-top:20px;font-size:14px"}, "No API key is set, so new questions are off. Open a saved chat on the left, or set LLM_API_KEY in .env."));
+}
+function render() {
+  const view = $("thread"), items = [];
+  for (const r of thread?.runs || []) items.push(h("div", {class: "user", id: `ask-${r.run_id}`}, r.question), botMsg(r));
+  if (pending?.nav === nav) items.push(h("div", {class: "user"}, pending.question),
+    h("article", {class: "bot", id: "pending", "aria-busy": "true", "aria-live": "polite"}, pendingView()));
+  if (notice?.nav === nav) items.push(...(notice.question ? [h("div", {class: "user"}, notice.question)] : []),
+    h("div", {class: "banner s-failed", role: "alert"}, icon("circleX"), h("div", {}, h("p", {}, notice.error),
+      notice.question && config.live ? h("button", {type: "button", class: "btn", style: "margin-top:8px", onclick: () => ask(notice.question)},
+        icon("replay", "sm"), "Try again") : null)));
+  view.classList.toggle("empty", !items.length);
+  view.replaceChildren(...(items.length ? items : [emptyView()]));
+  $("title").textContent = thread ? thread.runs[0].question : pending?.nav === nav ? pending.question : "New chat";
+  document.title = thread ? `${thread.runs[0].question} · Data Investigator` : "Data Investigator";
+  $("q").placeholder = !config.live ? "No API key: saved chats only" : thread ? "Ask a follow-up…" : "Ask why sales changed, or ask for a chart…";
+  $("q").disabled = $("composer").querySelector("button").disabled = !config.live || !!pending;
+  renderList();
+}
+const toBottom = () => { const sc = $("scroll"); sc.scrollTop = sc.scrollHeight; };
+const toRun = id => $(`ask-${id}`)?.scrollIntoView({block: "start"});
+
+function setDrawer(open) {
+  $("side").classList.toggle("open", open);
+  $("scrim").hidden = !open;
+  $("menu").setAttribute("aria-expanded", String(open));
+}
+function go(id) {
+  setDrawer(false);
+  if (location.hash.slice(1) === id) route(); else location.hash = id;
+}
+async function route() {
+  const id = location.hash.slice(1);
+  notice = null;
+  if (!id) { nav++; thread = null; render(); $("q").focus(); return; }
+  const root = rootOf(id), token = ++nav;
+  const ids = runs.filter(r => rootOf(r.run_id) === root).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(r => r.run_id);
+  try {
+    const full = await Promise.all((ids.length ? ids : [id]).map(i => api(`/api/runs/${i}`)));
+    if (token !== nav) return;
+    thread = {root, runs: full};
+  } catch (e) {
+    if (token !== nav) return;
+    thread = null; notice = {nav, question: "", error: `Could not open this chat: ${e.message}`};
+  }
+  render();
+  toRun(id === root ? thread?.runs.at(-1).run_id : id);
+}
+
+async function ask(question) {
+  if (pending || !config.live) return;
+  const parent = thread ? thread.runs.at(-1).run_id : null, token = nav;
+  notice = null; pending = {question, t0: Date.now(), nav, progress: null};
+  $("q").value = ""; grow(); render(); toBottom();
+  let run = null;
+  try {
+    run = await askStream({question, parent_run_id: parent}, progress => {
+      pending.progress = progress;
+      const el = $("pending");
+      if (el && token === nav) { el.replaceChildren(...pendingView()); toBottom(); }
+    });
+    runs = await api("/api/runs");
+  } catch (e) {
+    if (token === nav) notice = {nav, question, error: e.message};
+  }
+  pending = null;
+  if (run && token === nav) {
+    if (!thread) { thread = {root: run.run_id, runs: []}; history.replaceState(null, "", `#${run.run_id}`); }
+    thread.runs.push(run);
+  }
+  render();
+  if (token !== nav) return;
+  if (run) toRun(run.run_id);
+  else { toBottom(); $("q").value = question; grow(); }
+}
+
+function grow() { const q = $("q"); q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 200) + "px"; }
+
+async function init() {
+  document.querySelectorAll("[data-icon]").forEach(el => el.replaceWith(icon(el.dataset.icon)));
+  config = await api("/api/config");
+  $("mode").replaceChildren(h("span", {class: "dot" + (config.live ? "" : " off"), "aria-hidden": "true"}),
+    config.live ? `Live · ${config.model}` : "No API key · saved runs and replay");
+  $("limits").textContent = config.live ? "Figures are checked against the data. Explanations of why can still be wrong."
+    : "Set LLM_API_KEY in .env to ask new questions.";
+  $("composer").addEventListener("submit", e => { e.preventDefault(); const q = $("q").value.trim(); if (q) ask(q); });
+  $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); } });
+  $("q").addEventListener("input", grow);
+  $("new").addEventListener("click", () => { setDrawer(false); if (location.hash) history.pushState(null, "", location.pathname); route(); });
+  $("menu").addEventListener("click", () => setDrawer(!$("side").classList.contains("open")));
+  $("scrim").addEventListener("click", () => setDrawer(false));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && $("side").classList.contains("open")) { setDrawer(false); $("menu").focus(); } });
+  runs = await api("/api/runs");
+  await route();
+}
+window.addEventListener("popstate", route);  // back/forward, including hash changes
+init().catch(e => { notice = {nav, question: "", error: e.message}; render(); });
+</script>
+</body>
+</html>

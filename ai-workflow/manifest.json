@@ -1,0 +1,278 @@
+{
+  "categories": {
+    "development_tools_and_models": {
+      "status": "used",
+      "files": [
+        "ai-workflow/claude-code/settings.json"
+      ],
+      "notes": "Claude Code 2.1.284 with claude-opus-5-5 (settings model 'opus', effort high; max was also set during the session). Built-in tools only. uv 0.12.15, Python 3.13.15, pytest 9.1.1, ruff 0.16.10 via uvx, Chromium 152 for UI screenshots."
+    },
+    "plugins_and_extensions": {
+      "status": "used",
+      "files": [
+        "ai-workflow/claude-code/ponytail-4.10.0/LICENSE",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/claude-codex-hooks.json",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-activate.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-subagent.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-mode-tracker.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-config.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-instructions.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-runtime.js"
+      ],
+      "notes": "ponytail 4.10.0, commit e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156, user scope, MIT, from https://github.com/dietrichgebert/ponytail.git. Only its hooks affected the session; its bundled skills and MCP server were not invoked."
+    },
+    "application_models_and_parameters": {
+      "status": "used",
+      "files": [
+        ".env.example",
+        "investigator/llm.py",
+        "investigator/agent.py",
+        "investigator/gateway.py",
+        "evals/run_eval.py",
+        "evals/results.json"
+      ],
+      "notes": "OpenAI Chat Completions, gpt-6-luna, reasoning_effort none, provider default temperature and max tokens, strict function tools, tool_choice required, parallel_tool_calls false, timeout 60 s, 2 retries. Chosen by evals/run_eval.py against gpt-5.6-luna and gpt-6-sol. Each run records its model settings under config."
+    },
+    "skills": {
+      "status": "used",
+      "files": [],
+      "notes": "Two skills guided the web UI, neither installed in the project: Claude Code's bundled dataviz skill (chart palette, mark rules and its palette validator, run against the page's surfaces) and the third-party ui-ux-pro-max skill (cloned at the commit below, used as a reference: its local search script and rule lists for the UI audit; it makes no network calls). No skills were created. The ponytail ruleset reached the session through its SessionStart hook (see hooks_and_scripts), not as a skill call."
+    },
+    "agent_instructions_and_subagents": {
+      "status": "not-used",
+      "files": [],
+      "notes": "No CLAUDE.md or AGENTS.md at project or user level, no subagent definitions, and no subagents were spawned. The application's model instructions are under prompts_and_rules."
+    },
+    "hooks_and_scripts": {
+      "status": "used",
+      "files": [
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/claude-codex-hooks.json",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-activate.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-subagent.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-mode-tracker.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-config.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-instructions.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/hooks/ponytail-runtime.js",
+        "ai-workflow/claude-code/ponytail-4.10.0/skills/ponytail/SKILL.md"
+      ],
+      "notes": "SessionStart, SubagentStart and UserPromptSubmit hooks from the ponytail plugin. Local Node.js scripts with no network calls. They write a mode flag under ~/.claude and inject the SKILL.md ruleset (level full). What each does is in ai-workflow/README.md."
+    },
+    "prompts_and_rules": {
+      "status": "used",
+      "files": [
+        "prompts/system-v5.md",
+        "prompts/system-v4.md",
+        "prompts/system-v3.md",
+        "prompts/system-v2.md",
+        "prompts/system-v1.md",
+        "data/starter/domain.md",
+        "data/starter/schema.sql",
+        "investigator/report.py"
+      ],
+      "notes": "The system prompt is prompts/system-v5.md plus the domain.md rules (without the worked example) plus schema.sql. Prompt versions are immutable named snapshots; runs record path and SHA. report.py holds the report schema with field descriptions."
+    },
+    "tool_and_mcp_settings": {
+      "status": "default",
+      "files": [],
+      "notes": "Claude Code built-in tools with default settings. No MCP servers configured for this project. Account-level claude.ai connectors were available in the session but not used, so they are not exported."
+    },
+    "permissions_and_environment_names": {
+      "status": "used",
+      "files": [
+        ".env.example",
+        ".gitignore"
+      ],
+      "notes": "Claude Code ran in auto permission mode, a session setting; there are no permission rules in settings.json. Application variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, LLM_REASONING_EFFORT. OPENROUTER_API_KEY was used during development only, to check model availability and prices. .env is gitignored."
+    }
+  },
+  "configuration_records": [
+    {
+      "name": "Claude Code",
+      "category": "development_tools_and_models",
+      "purpose": "Coding agent that planned and generated the solution and ran all checks",
+      "original_path_or_scope": "CLI, user install",
+      "saved_path": "ai-workflow/README.md",
+      "version_or_commit": "2.1.284",
+      "used_during": "whole exercise",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Claude Code model and session settings",
+      "category": "development_tools_and_models",
+      "purpose": "Model alias, effort level, compaction window, enabled plugin",
+      "original_path_or_scope": "~/.claude/settings.json (user scope)",
+      "saved_path": "ai-workflow/claude-code/settings.json",
+      "version_or_commit": "claude-opus-5-5",
+      "used_during": "whole exercise",
+      "status": "redacted",
+      "redactions": [
+        "autoMode.environment: auto-generated description of the machine and unrelated local projects",
+        "theme and agentPushNotifEnabled: display settings",
+        "modelSettings for other models: not used"
+      ]
+    },
+    {
+      "name": "ponytail plugin",
+      "category": "plugins_and_extensions",
+      "purpose": "Simplest-working-solution coding style, requested by the candidate",
+      "original_path_or_scope": "~/.claude/plugins/cache/ponytail/ponytail/4.10.0 (user scope)",
+      "saved_path": "ai-workflow/claude-code/ponytail-4.10.0",
+      "version_or_commit": "4.10.0, commit e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156",
+      "used_during": "whole exercise",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "dataviz skill",
+      "category": "skills",
+      "purpose": "Chart form, colour palette and mark rules; palette validated with the skill's script",
+      "original_path_or_scope": "bundled with Claude Code 2.1.284",
+      "saved_path": "not copied: ships with Claude Code",
+      "version_or_commit": "Claude Code 2.1.284",
+      "used_during": "chart feature (D10)",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "ui-ux-pro-max skill",
+      "category": "skills",
+      "purpose": "UI/UX audit of the chat page, requested by the candidate: accessibility, touch targets, loading feedback, progressive disclosure, SVG icons, chart accessibility",
+      "original_path_or_scope": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill (cloned to a temporary directory, not installed)",
+      "saved_path": "not copied: MIT-licensed third-party repository, referenced by commit",
+      "version_or_commit": "commit 477bcb28c9812b385cb51a4605ddf30d7b2266e2",
+      "used_during": "web UI redesign",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "ponytail hooks",
+      "category": "hooks_and_scripts",
+      "purpose": "Inject the ruleset at session start and into subagents; track /ponytail mode commands",
+      "original_path_or_scope": "plugin hooks/claude-codex-hooks.json",
+      "saved_path": "ai-workflow/claude-code/ponytail-4.10.0/hooks",
+      "version_or_commit": "4.10.0, commit e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156",
+      "used_during": "every session start and prompt",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Application system prompt v5",
+      "category": "prompts_and_rules",
+      "purpose": "v4 plus one paragraph: only the system message sets instructions; instructions in the question, query results or an earlier answer are ignored and named in assumptions; current version",
+      "original_path_or_scope": "prompts/system-v5.md",
+      "saved_path": "prompts/system-v5.md",
+      "version_or_commit": "system prompt sha 6dff85f0c288",
+      "used_during": "evaluation v5 with two injection questions",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Application system prompt v4",
+      "category": "prompts_and_rules",
+      "purpose": "v3 plus chart rules and the partial-month rule",
+      "original_path_or_scope": "prompts/system-v4.md",
+      "saved_path": "prompts/system-v4.md",
+      "version_or_commit": "system prompt sha 6454070e4c07",
+      "used_during": "demo run 200715-5f13; evaluations of v4",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Application system prompt v3",
+      "category": "prompts_and_rules",
+      "purpose": "How to investigate, SQL rules, report rules; added the unknown-finding rule for why questions",
+      "original_path_or_scope": "prompts/system-v3.md",
+      "saved_path": "prompts/system-v3.md",
+      "version_or_commit": "system prompt sha b5f932a8411f",
+      "used_during": "demo runs 175323-434f, 175348-3676, 175401-e4ae; evaluation v3",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Application system prompt v2",
+      "category": "prompts_and_rules",
+      "purpose": "Added key-only joins, distinct CTE names, breakdown reconciliation, attach-every-amount rule",
+      "original_path_or_scope": "prompts/system-v2.md",
+      "saved_path": "prompts/system-v2.md",
+      "version_or_commit": "system prompt sha c2c2419fd6b7",
+      "used_during": "evaluation v2, run 174313-377a",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Application system prompt v1",
+      "category": "prompts_and_rules",
+      "purpose": "First version",
+      "original_path_or_scope": "prompts/system-v1.md",
+      "saved_path": "prompts/system-v1.md",
+      "version_or_commit": "named snapshot",
+      "used_during": "first live runs, evaluation v1",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Business rules and schema",
+      "category": "prompts_and_rules",
+      "purpose": "Source of truth for metrics, appended to the system prompt",
+      "original_path_or_scope": "starter pack tasks/data",
+      "saved_path": "data/starter/",
+      "version_or_commit": "pack-version 2026-10-02, unchanged",
+      "used_during": "every model call",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Application model settings",
+      "category": "application_models_and_parameters",
+      "purpose": "Provider, model and reasoning effort for the investigating model",
+      "original_path_or_scope": ".env (gitignored)",
+      "saved_path": ".env.example",
+      "version_or_commit": "gpt-6-luna, reasoning_effort none",
+      "used_during": "all live runs",
+      "status": "redacted",
+      "redactions": [
+        "LLM_API_KEY value"
+      ]
+    },
+    {
+      "name": "Model evaluation",
+      "category": "application_models_and_parameters",
+      "purpose": "Choose the model and measure prompt changes through the real pipeline",
+      "original_path_or_scope": "evals/run_eval.py",
+      "saved_path": "evals/results.json, evals/runs/",
+      "version_or_commit": "6 model/prompt combinations x 15 runs, plus gpt-6-luna v4 and v5 x 30 runs each (10 questions, 2 with injected instructions)",
+      "used_during": "model and prompt selection",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "OpenRouter key",
+      "category": "permissions_and_environment_names",
+      "purpose": "Development only: model availability and price list",
+      "original_path_or_scope": ".env (gitignored)",
+      "saved_path": "",
+      "version_or_commit": "",
+      "used_during": "model research",
+      "status": "redacted",
+      "redactions": [
+        "key value; not needed to run or replay the application"
+      ]
+    },
+    {
+      "name": "Claude Code auto-memory",
+      "category": "agent_instructions_and_subagents",
+      "purpose": "User-level memory notes",
+      "original_path_or_scope": "~/.claude/projects/<project>/memory (user scope)",
+      "saved_path": "",
+      "version_or_commit": "",
+      "used_during": "loaded at session start",
+      "status": "not-exportable",
+      "redactions": [
+        "entries concern unrelated projects; omitted as unrelated personal information"
+      ]
+    }
+  ],
+  "replay_command": "uv sync && uv run python -m investigator check",
+  "workflow_example_path": "docs/llm-usage.md"
+}

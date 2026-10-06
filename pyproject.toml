@@ -1,0 +1,20 @@
+[project]
+name = "data-investigator"
+version = "0.1.0"
+description = "Bounded LLM investigator for a fictional sales database (Provectus take-home, task D)"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=3.24.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.ruff]
+line-length = 120
