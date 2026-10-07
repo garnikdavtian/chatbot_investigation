@@ -1,87 +1,95 @@
-"""Users and chat history over HTTP: keys are stored hashed, and no user can reach another's chats."""
+"""Login, chats and the api -> agent call: passwords and tokens are stored hashed, no user can reach another's
+chats, and a question goes through the agent service and is saved with its chat."""
 import json
-import shutil
 import sqlite3
 import threading
-import urllib.error
-import urllib.request
-from http.server import ThreadingHTTPServer
 
 import pytest
+from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-from investigator import agent, history, web
+from investigator import agent, agent_service, api, history
 from investigator.llm import Scripted
+
+ALLOW = AIMessage("", tool_calls=[{"id": "g", "name": "verdict", "args": {"label": "allow", "reason": "ok"}}])
 
 
 @pytest.fixture
-def server(tmp_path, monkeypatch):
+def client(tmp_path, monkeypatch):
     monkeypatch.setattr(history, "DB", tmp_path / "history.sqlite")
-    shutil.copy("data/investigation.sqlite", tmp_path / "db.sqlite")
-    monkeypatch.setattr(agent, "DB", tmp_path / "db.sqlite")
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), web.Handler)
+    srv = agent_service.serve(port=0)  # the agent container, on a thread
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_port}"
+    monkeypatch.setattr(api, "AGENT_URL", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setattr(agent_service, "live_model", lambda: Scripted(script=[ALLOW, AIMessage("Hello.")]))
+    yield TestClient(api.app, base_url="http://127.0.0.1")
     srv.shutdown()
 
 
-def call(base, path, key=None, body=None):
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
-    if body is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(base + path, json.dumps(body).encode() if body is not None else None, headers)
-    try:
-        with urllib.request.urlopen(req) as r:
-            return r.status, r.read().decode()
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()
+def login(client, name, password="correct horse"):
+    history.add_user(name, password)
+    r = client.post("/api/login", json={"name": name, "password": password})
+    assert r.status_code == 200 and r.json()["name"] == name
+    return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
-def hello(user, parent=None):
-    """A saved chat message of `user`, made with a scripted model."""
-    script = [AIMessage("", tool_calls=[{"id": "g", "name": "verdict", "args": {"label": "allow", "reason": "ok"}}]),
-              AIMessage("Hello.")]
-    run = agent.chat("hi", Scripted(script=script), parent, db_path=agent.DB)
-    history.save(run, user)
-    return run
+def ask(client, auth, question="hi", parent=None):
+    r = client.post("/api/ask", headers=auth, json={"question": question, "parent_run_id": parent})
+    assert r.status_code == 200, r.text
+    lines = [json.loads(x) for x in r.text.splitlines()]
+    assert "progress" in lines[0] and "run" in lines[-1]
+    return lines[-1]["run"]
 
 
-def session(base):
-    """What the page does on its first visit: get this browser's own key."""
-    status, body = call(base, "/api/session", body={})
-    assert status == 200
-    return json.loads(body)["key"]
+def test_a_question_goes_through_the_agent_and_a_chat_continues_from_its_last_run(client):
+    alice = login(client, "alice")
+    first = ask(client, alice)
+    assert first["status"] == "answered" and first["answer"] == "Hello."
+    second = ask(client, alice, "hi again", first["run_id"])
+    assert second["parent_run_id"] == first["run_id"]
+    # the agent got the first turn's conversation with the second question
+    assert [m["data"]["content"] for m in second["state"]["messages"] if m["type"] == "human"] == ["hi", "hi again"]
+    assert [r["run_id"] for r in client.get("/api/runs", headers=alice).json()] == [second["run_id"], first["run_id"]]
 
 
-def test_users_see_only_their_own_chats(server):
-    alice, bob = session(server), session(server)
-    assert alice != bob
-    first = hello(history.user_for_key(alice))
-    hello(history.user_for_key(alice), first)
-    hello(history.user_for_key(bob))
-    rid = first["run_id"]
+def test_users_see_only_their_own_chats(client):
+    alice, bob = login(client, "alice"), login(client, "bob")
+    rid = ask(client, alice)["run_id"]
+    ask(client, bob)
 
-    assert call(server, "/api/config")[0] == 200  # no key needed
-    for key in (None, "wrong"):
-        assert call(server, "/api/runs", key)[0] == 401
-        assert call(server, "/api/ask", key, {"question": "hi"})[0] == 401
-    assert len(json.loads(call(server, "/api/runs", alice)[1])) == 2
-    assert len(json.loads(call(server, "/api/runs", bob)[1])) == 1
-    assert call(server, f"/api/runs/{rid}", alice)[0] == 200
-    for path, body in ((f"/api/runs/{rid}", None), (f"/api/runs/{rid}/report.md", None),
-                       (f"/api/runs/{rid}/replay", {}), ("/api/ask", {"question": "and?", "parent_run_id": rid})):
-        assert call(server, path, bob, body)[0] == 404, path
-    status, body = call(server, f"/api/runs/{rid}/replay", alice, {})
-    assert status == 200 and json.loads(body)["diffs"] == []
+    assert client.get("/api/config").status_code == 200  # no login needed
+    for auth in ({}, {"Authorization": "Bearer wrong"}):
+        assert client.get("/api/runs", headers=auth).status_code == 401
+        assert client.post("/api/ask", headers=auth, json={"question": "hi"}).status_code == 401
+    assert client.post("/api/login", json={"name": "alice", "password": "wrong"}).status_code == 401
+    assert client.post("/api/login", json={"name": "nobody", "password": "x"}).status_code == 401
+    assert len(client.get("/api/runs", headers=alice).json()) == 1
+    assert client.get(f"/api/runs/{rid}", headers=alice).status_code == 200
+    for path in (f"/api/runs/{rid}", f"/api/runs/{rid}/report.md"):
+        assert client.get(path, headers=bob).status_code == 404, path
+    for path, body in ((f"/api/runs/{rid}/replay", {}), ("/api/ask", {"question": "and?", "parent_run_id": rid})):
+        assert client.post(path, headers=bob, json=body).status_code == 404, path
+    r = client.post(f"/api/runs/{rid}/replay", headers=alice, json={})
+    assert r.status_code == 200 and r.json()["diffs"] == []
 
 
-def test_keys_are_stored_only_as_hashes(server):
-    key = session(server)
+def test_secrets_are_stored_only_as_hashes_and_logout_ends_the_session(client):
+    auth = login(client, "alice")
+    token = auth["Authorization"].split()[1]
     with sqlite3.connect(history.DB) as con:
-        stored = con.execute("SELECT key_sha256 FROM users").fetchone()[0]
-    assert key not in stored and len(stored) == 64 and history.user_for_key(key) == 1
-    # JSON only, like every POST: another site's form cannot create users
-    req = urllib.request.Request(server + "/api/session", b"x=1", {"Content-Type": "application/x-www-form-urlencoded"})
-    with pytest.raises(urllib.error.HTTPError) as e:
-        urllib.request.urlopen(req)
-    assert e.value.code == 415
+        password_hash = con.execute("SELECT password_hash FROM users").fetchone()[0]
+        token_sha = con.execute("SELECT token_sha256 FROM sessions").fetchone()[0]
+    assert "correct horse" not in password_hash and token not in token_sha and len(token_sha) == 64
+    # JSON only, like every POST: another site's form cannot log in or ask
+    assert client.post("/api/login", content="name=alice", headers={"Content-Type": "application/x-www-form-urlencoded"}).status_code == 415
+    assert client.post("/api/ask", headers=auth, json={"question": " "}).status_code == 400
+    assert client.post("/api/logout", headers=auth, json={}).status_code == 200
+    assert client.get("/api/runs", headers=auth).status_code == 401
+    assert client.get("/api/runs", headers={"Host": "evil.example"}).status_code == 400  # DNS rebinding
+
+
+def test_agent_unavailable_is_a_503(client, monkeypatch):
+    auth = login(client, "alice")
+    monkeypatch.setattr(api, "AGENT_URL", "http://127.0.0.1:9")
+    r = client.post("/api/ask", headers=auth, json={"question": "hi"})
+    assert r.status_code == 503 and "agent" in r.json()["error"]
+    assert agent.MAX_QUERIES  # the agent module itself is untouched by the split

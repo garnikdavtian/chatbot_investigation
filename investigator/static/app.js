@@ -45,13 +45,15 @@ const FIG = {query_error: "the query computed a wrong value", unsupported: "not 
 const METRICS = ["gross", "refunds", "net"];
 const $ = id => document.getElementById(id);
 // thread = {root, runs: [full run records]}. nav changes on every navigation, so a late reply cannot draw into another view.
-let config = {}, runs = [], thread = null, pending = null, notice = null, nav = 0, key = null;
-// This browser's app key: issued by the server on the first visit, never shown. A header, not a cookie,
-// so other sites cannot use it. Clearing site data starts a new, empty history.
-try { key = localStorage.getItem("investigator-key"); } catch { /* storage blocked: a new key each visit */ }
-function setKey(k) {
-  key = k;
-  try { if (k) localStorage.setItem("investigator-key", k); else localStorage.removeItem("investigator-key"); } catch { /* see above */ }
+let config = {}, runs = [], thread = null, pending = null, notice = null, nav = 0, key = null, me = null;
+// The session token from login, sent as a header, not a cookie, so other sites cannot use it.
+try { key = localStorage.getItem("investigator-token"); me = localStorage.getItem("investigator-name"); } catch { /* storage blocked: log in each visit */ }
+function setKey(k, name = null) {
+  key = k; me = name;
+  try {
+    if (k) { localStorage.setItem("investigator-token", k); localStorage.setItem("investigator-name", name); }
+    else { localStorage.removeItem("investigator-token"); localStorage.removeItem("investigator-name"); }
+  } catch { /* see above */ }
 }
 
 // Text only: model output never becomes HTML.
@@ -91,19 +93,37 @@ const when = iso => new Date(iso).toLocaleString("en", {month: "short", day: "nu
 const badge = status => h("span", {class: `badge s-${status}`, title: STATUS[status]?.note || ""}, icon(STATUS[status]?.icon || "alert", "sm"), STATUS[status]?.label || status);
 
 const headers = body => ({...(key ? {Authorization: `Bearer ${key}`} : {}), ...(body ? {"Content-Type": "application/json"} : {})});
-async function ensureKey() {  // first visit: the server issues this browser its own key
-  if (key) return;
-  const r = await fetch("/api/session", {method: "POST", headers: headers(true), body: "{}"});
-  if (!r.ok) throw new Error(`Could not start a session (${r.status}).`);
-  setKey((await r.json()).key);
-}
-// Every API call goes through here. A 401 means the server no longer knows this browser's key, e.g. a
-// fresh Docker volume: get a new key and retry once (the server did nothing, so a retry is safe).
+// Every API call goes through here. A 401 means the session ended (logged out elsewhere, or a fresh
+// history): back to the login screen.
 async function call(path, body) {
-  const once = () => fetch(path, body ? {method: "POST", headers: headers(true), body: JSON.stringify(body)} : {headers: headers()});
-  let r = await once();
-  if (r.status === 401) { setKey(null); await ensureKey(); r = await once(); }
+  const r = await fetch(path, body ? {method: "POST", headers: headers(true), body: JSON.stringify(body)} : {headers: headers()});
+  if (r.status === 401 && key) { setKey(null); showLogin("Your session ended. Log in again."); }
   return r;
+}
+function showLogin(message = "") {
+  runs = []; thread = null; pending = null; notice = null;
+  $("app").hidden = true; $("login").hidden = false;
+  $("login-error").textContent = message;
+  $("name").focus();
+}
+async function logIn(e) {
+  e.preventDefault();
+  const button = e.submitter, body = {name: $("name").value, password: $("password").value};
+  button.disabled = true;
+  try {
+    const r = await fetch("/api/login", {method: "POST", headers: headers(true), body: JSON.stringify(body)});
+    const data = await r.json();
+    if (!r.ok) { $("login-error").textContent = r.status === 401 ? "Wrong name or password." : data.error; return; }
+    setKey(data.token, data.name);
+    $("password").value = ""; $("login").hidden = true; $("app").hidden = false;
+    await start();
+  } catch (err) { $("login-error").textContent = err.message; } finally { button.disabled = false; }
+}
+async function logOut() {
+  try { await call("/api/logout", {}); } catch { /* the token is dropped here either way */ }
+  setKey(null);
+  history.replaceState(null, "", location.pathname);
+  showLogin();
 }
 async function api(path, body) {
   const r = await call(path, body);
@@ -637,16 +657,20 @@ async function init() {
   $("menu").addEventListener("click", () => setDrawer(!$("side").classList.contains("open")));
   $("scrim").addEventListener("click", () => setDrawer(false));
   document.addEventListener("keydown", e => { if (e.key === "Escape" && $("side").classList.contains("open")) { setDrawer(false); $("menu").focus(); } });
+  $("login-form").addEventListener("submit", logIn);
+  if (!key) return showLogin();
+  $("app").hidden = false;
   await start();
 }
 function renderMode() {
   $("mode").replaceChildren(h("span", {class: "dot" + (config.live ? "" : " off"), "aria-hidden": "true"}),
-    config.live ? `Live · ${config.model}` : "No API key · saved runs and replay");
+    config.live ? `Live · ${config.model}` : "No API key",
+    h("span", {class: "who"}, me, h("button", {type: "button", onclick: logOut}, "Log out")));
 }
 async function start() {
   notice = null; thread = null; runs = [];
-  try { await ensureKey(); runs = await api("/api/runs"); } catch (e) { notice = {nav, question: "", error: e.message}; return render(); }
+  try { runs = await api("/api/runs"); } catch (e) { notice = {nav, question: "", error: e.message}; return render(); }
   await route();
 }
 window.addEventListener("popstate", route);  // back/forward, including hash changes
-init().catch(e => { notice = {nav, question: "", error: e.message}; render(); });
+init().catch(e => { $("login").hidden = true; $("app").hidden = false; notice = {nav, question: "", error: e.message}; render(); });

@@ -22,7 +22,8 @@ Claude Code generated everything outside `data/starter/`, which holds the starte
 
 The candidate set the direction, reviewed the work and made the product decisions: which assignment
 to take, a final UI without Streamlit, the review gates and, after testing v1 by hand, the move to a
-LangGraph agent with a guard, memory, per-user keys and three containers (correction 7). Claude Code ran every check
+LangGraph agent with a guard, memory, per-user keys and three containers (correction 7), and
+later named logins, a FastAPI api and a separate agent container (correction 9). Claude Code ran every check
 listed below.
 
 ## One representative instruction and workflow
@@ -130,9 +131,19 @@ customer ranking, headline numbers). The evaluation then showed two problems:
 v9 result: data 27/30 (v6 26/30), chart forms 11/12, chat 12/12, 0 false blocks. The schema
 change also applies to any re-run of older prompts, so the v6 row predates it.
 
+**9. Logins and a separate agent** (anonymous keys → named users, D15–D17). The candidate asked for a
+FastAPI api and a separate agent container, a login page, users with their chat sessions in the
+database, and an agent "idle all the time waiting for the message". Claude Code built it and
+corrected three points of the request: the idle agent is just a running HTTP service with no state
+of its own; chat sessions are rows linked to a user, and they already existed as runs; and users
+must not go in the sales database the model's SQL runs against. A login by name alone was flagged
+as no protection; the candidate chose passwords and admin-created users. A browser test of the new
+page failed at first because the page's CSP blocked the test tool's own script evaluation, which
+confirmed the CSP; the test ran with the tool's CSP bypass.
+
 ## Checks of Claude Code's own output
 
-- 59 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
+- 61 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
   headless browser: the page and its chart render, and no violations are logged.
 - The UI was reviewed through headless-browser screenshots at desktop and phone width. This caught
   links that were invisible in dark mode and chart labels that shrank to unreadable on a phone; both

@@ -27,7 +27,7 @@ Machine-readable record: [`manifest.json`](manifest.json).
 
 | Setting | Value | Where |
 |---|---|---|
-| Framework | LangGraph 1.2.14 (`StateGraph`: guard → reason ⇄ act), langchain-core and langchain-openai 1.6.7, openai 3.24.0 | `investigator/agent.py`, `pyproject.toml` |
+| Framework | LangGraph 1.2.14 (`StateGraph`: guard → reason ⇄ act), langchain-core and langchain-openai 1.6.7, openai 3.24.0; FastAPI 0.142.2 on uvicorn 0.54.0 for the api (httpx 0.28.1 for its tests) | `investigator/agent.py`, `investigator/api.py`, `pyproject.toml` |
 | API | OpenAI Chat Completions through `ChatOpenAI(use_responses_api=False)`, any compatible endpoint. langchain-openai 1.6.7 otherwise switches gpt-6 models with tools to the Responses API, which the evaluation did not cover | `investigator/llm.py`, `LLM_BASE_URL` |
 | Model | `gpt-6-luna` | `LLM_MODEL` |
 | Reasoning effort | `none` (gpt-6 models accept function tools in Chat Completions only without reasoning) | `LLM_REASONING_EFFORT` |
@@ -84,7 +84,7 @@ other processes.
 
 The effect on this exercise: the ruleset pushed toward the standard library and the fewest files, no
 speculative abstractions, and `ponytail:` comments that name each deliberate shortcut's limit and
-upgrade path. Examples are in `investigator/web.py` and `investigator/verify.py`. The candidate
+upgrade path. Examples are in `investigator/history.py`, `investigator/agent_service.py` and `investigator/verify.py`. The candidate
 asked for this style explicitly.
 
 ## One workflow example
@@ -113,7 +113,7 @@ only 3 of 6. Prompt v3 brought it to 6 of 6. The full account, with excerpts, is
 **Correction: the architecture.** The candidate's manual test of v1 (`../docs/v1-chats/`) showed
 that every message was forced through SQL: "hi" and "tell me a joke" each got two queries and a
 report. Claude Code had optimized for the evaluation, which had no chat messages. The rewrite
-(LangGraph guard → reason ⇄ act, memory, users, three containers) was the candidate's design; the
+(LangGraph guard → reason ⇄ act, memory, users, containers; later logins, FastAPI and a separate agent container) was the candidate's design; the
 evaluation gained 4 chat cases so this cannot regress unseen.
 
 ## Reproduce or replay
@@ -122,7 +122,7 @@ evaluation gained 4 chat cases so this cannot regress unseen.
 
 ```bash
 uv sync
-uv run pytest                              # 59 tests, scripted and replayed model responses
+uv run pytest                              # 61 tests, scripted and replayed model responses
 uv run python -m investigator check        # replay every saved real run in runs/
 uv run python -m evals.run_eval --rescore  # re-score the saved evaluation runs
 uv run python -m investigator serve        # UI with your chats and replay, http://127.0.0.1:8000

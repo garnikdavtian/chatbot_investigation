@@ -1,4 +1,4 @@
-from investigator import web
+from investigator import api as web
 
 
 def test_page_has_no_inline_script_and_the_csp_allows_only_files_from_this_server():

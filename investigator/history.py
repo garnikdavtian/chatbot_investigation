@@ -1,12 +1,13 @@
-"""Users and their chats, in their own SQLite file, apart from the read-only sales data.
+"""Users, their login sessions and their chats, in their own SQLite file, apart from the read-only sales data.
 
-Only the app writes it. Each browser gets its own random app key on its first visit (POST /api/session; not
-the LLM key). The page keeps it and sends it on every call; only its sha256 is stored. Every read filters by
-user, so one user cannot list, open or continue another user's chats. Nobody signs in or sees a key.
-HISTORY_DB overrides the path (the container keeps it on a volume).
-ponytail: one app instance writes this file; move it to Postgres when several replicas must share it.
+Only the api container reads and writes it. An admin creates users (python -m investigator add-user <name>);
+passwords are stored as salted scrypt hashes, login tokens as sha256. A chat is a chain of runs linked by
+parent_run_id, and each run carries the conversation state the agent continues from. Every read filters by user,
+so one user cannot list, open or continue another user's chats. HISTORY_DB overrides the path.
+ponytail: one api instance writes this file; move it to Postgres when several replicas must share it.
 """
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -19,13 +20,16 @@ from investigator.report import ROOT
 
 DB = Path(os.environ.get("HISTORY_DB") or ROOT / "data" / "history.sqlite")
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, key_sha256 TEXT NOT NULL UNIQUE,
-                                  created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE,
+                                  password_hash TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions (token_sha256 TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users,
+                                     created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users,
                                  parent_run_id TEXT, created_at TEXT NOT NULL, question TEXT NOT NULL,
                                  status TEXT NOT NULL, record TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS runs_by_user ON runs (user_id, created_at);
 """
+SCRYPT = {"n": 2**14, "r": 8, "p": 1}  # the hashlib defaults' safe setting: about 16 MB and 50 ms per hash
 
 
 @contextmanager
@@ -37,23 +41,51 @@ def _db():
         yield con
 
 
-def _sha(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def add_user() -> str:
-    """A new anonymous user; returns their key, which only the caller ever holds."""
-    key = secrets.token_urlsafe(32)
+def _scrypt(password: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(password.encode(), salt=salt, **SCRYPT)
+
+
+def add_user(name: str, password: str) -> int:
+    """Raises sqlite3.IntegrityError if the name is taken."""
+    salt = secrets.token_bytes(16)
     with _db() as con:
-        con.execute("INSERT INTO users (key_sha256, created_at) VALUES (?, ?)",
-                    (_sha(key), datetime.now(UTC).isoformat(timespec="seconds")))
-    return key
+        return con.execute("INSERT INTO users (name, password_hash, created_at) VALUES (?, ?, ?)",
+                           (name, f"{salt.hex()}:{_scrypt(password, salt).hex()}", _now())).lastrowid
 
 
-def user_for_key(key: str) -> int | None:
+def login(name: str, password: str) -> str | None:
+    """A new session token, or None. The hash is computed even for an unknown name, so timing does not tell
+    which names exist."""
     with _db() as con:
-        row = con.execute("SELECT user_id FROM users WHERE key_sha256 = ?", (_sha(key),)).fetchone()
-    return row and row[0]
+        row = con.execute("SELECT user_id, password_hash FROM users WHERE name = ?", (name,)).fetchone()
+    salt, _, digest = (row[1] if row else f"{'0' * 32}:").partition(":")
+    ok = hmac.compare_digest(_scrypt(password, bytes.fromhex(salt)).hex(), digest) and row is not None
+    if not ok:
+        return None
+    token = secrets.token_urlsafe(32)
+    with _db() as con:  # ponytail: tokens never expire; add expiry and a login rate limit beyond 127.0.0.1
+        con.execute("INSERT INTO sessions VALUES (?, ?, ?)", (_sha(token), row[0], _now()))
+    return token
+
+
+def logout(token: str) -> None:
+    with _db() as con:
+        con.execute("DELETE FROM sessions WHERE token_sha256 = ?", (_sha(token),))
+
+
+def user_for_token(token: str) -> dict | None:
+    with _db() as con:
+        row = con.execute("SELECT u.user_id, u.name FROM sessions s JOIN users u USING (user_id) "
+                          "WHERE s.token_sha256 = ?", (_sha(token),)).fetchone()
+    return row and {"user_id": row[0], "name": row[1]}
+
+
+def _sha(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def save(run: dict, user_id: int) -> None:
@@ -72,6 +104,6 @@ def load(run_id: str, user_id: int) -> dict | None:
 def list_runs(user_id: int) -> list[dict]:
     keys = ("run_id", "created_at", "question", "status", "parent_run_id")
     with _db() as con:
-        rows = con.execute(f"SELECT {', '.join(keys)} FROM runs WHERE user_id = ? ORDER BY created_at DESC, run_id DESC",
+        rows = con.execute(f"SELECT {', '.join(keys)} FROM runs WHERE user_id = ? ORDER BY created_at DESC, rowid DESC",
                            (user_id,)).fetchall()
     return [dict(zip(keys, row)) for row in rows]

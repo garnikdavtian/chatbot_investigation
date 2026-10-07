@@ -18,9 +18,10 @@ You need Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pytest                          # 59 tests, no API key
+uv run pytest                          # 61 tests, no API key
 uv run python -m investigator check    # replay every saved live run, no API key
-uv run --env-file .env python -m investigator serve   # http://127.0.0.1:8000
+uv run python -m investigator add-user alice          # asks for a password
+uv run --env-file .env python -m investigator serve   # http://127.0.0.1:8000, log in as alice
 ```
 
 To ask new questions, copy `.env.example` to `.env` and set `LLM_API_KEY`. The CLI asks without the
@@ -35,17 +36,19 @@ Each `ask` saves `runs/<run_id>.json` (the full record) and `runs/<run_id>.md` (
 report); `--parent` continues that chat. The command exits 0 when the run is verified, answered or
 blocked.
 
-**Docker: three containers** (decision D16). ui (nginx) serves the page and proxies `/api` to app
-(API + agent), which reaches db (read-only query service). db has no internet, and the sales
-database exists only as its read-only mount.
+**Docker: four containers** (decisions D16, D17). ui (nginx) serves the page and proxies `/api` to
+api (FastAPI: login and chats), which calls agent (the LangGraph graph, waiting for calls), which
+reaches db (read-only query service). api has no LLM key and no internet; agent has the key but no
+users; db has neither, and the sales database exists only as its read-only mount.
 
 ```bash
-docker compose up --build                                      # http://127.0.0.1:8000
+docker compose up --build                                       # http://127.0.0.1:8000
+docker compose exec api python -m investigator add-user alice   # then log in as alice
 ```
 
-`docker compose config` validates the file. The Docker daemon was not available on the build
-machine, so `up` has not been run there. The same db service ran outside Docker: all 7 saved runs
-replay through it.
+The earlier three-container version ran under `docker compose up` on the candidate's machine. The
+four-container file is validated by `docker compose config`, and the api → agent path over HTTP is
+tested locally and in `tests/test_history.py`; `up` on this version has not been run yet.
 
 Other commands:
 
@@ -54,8 +57,8 @@ Other commands:
 - Re-run the model evaluation (about $0.07): `uv run --env-file .env python -m evals.run_eval`.
 - Re-score the saved evaluation runs without a key: `uv run python -m evals.run_eval --rescore`.
 
-**The web page** is a chat. Nobody signs in: on the first visit the server issues the browser its own
-key, which the page keeps and sends with every call, so each browser sees only its own chats. The page
+**The web page** starts with a login (name and password; an admin creates users with `add-user`).
+After login each user sees only their own chats, and opening one and asking continues it. The page
 opens on an empty chat with six suggested questions (two of them charts: a weekly trend and a waterfall), and the left panel lists past chats. The
 question box stays at the bottom (Enter sends, Shift+Enter adds a line), and a message in an open
 chat continues it. While the agent works, the page shows each step: the guard's check, then each
@@ -106,9 +109,11 @@ flowchart LR
 | `investigator/verify.py` | Checks each figure against its cited result and against `calc.py`, and checks money in the text. Issue texts never include expected values |
 | `investigator/calc.py` | `domain.md` in plain Python (the oracle), plus the data contract |
 | `investigator/llm.py` | The only model client: `ChatOpenAI` for any OpenAI-compatible API, and `Scripted` for replay and tests |
-| `investigator/history.py` | Anonymous users (hashed per-browser keys) and their chats, in `data/history.sqlite`, apart from the sales data |
+| `investigator/history.py` | Users (scrypt password hashes), login sessions (hashed tokens) and chats, in `data/history.sqlite`, apart from the sales data |
 | `investigator/report.py` | Report schema (pydantic), run files, Markdown export |
-| `investigator/__main__.py`, `web.py`, `static/` | CLI and web UI over the same agent |
+| `investigator/api.py` | FastAPI: login, chats, export; calls the agent service for every question and saves the result |
+| `investigator/agent_service.py` | The agent container: the compiled graph waiting for `/invoke` and `/replay` calls; stateless |
+| `investigator/__main__.py`, `static/` | CLI (ask, replay, check, serve, agent, db, add-user) and the web page |
 
 **Statuses.**
 
@@ -126,8 +131,8 @@ checkpointer is needed. Messages beyond the last 20 are summarized (`prompts/com
 removed; the summary reaches the model as user-side input, never in the system message.
 
 The design decisions, the alternatives rejected and the known ceilings are in
-[`docs/decisions.md`](docs/decisions.md). D12–D16 cover the graph, memory, guard, users and
-containers.
+[`docs/decisions.md`](docs/decisions.md). D12–D17 cover the graph, memory, guard, users,
+containers and the API.
 
 ## Guardrails
 
@@ -138,8 +143,9 @@ containers.
 | Checks | Invented or wrong numbers: a figure counts only if it is a cell of the cited result and equals the rules; money in text must be a checked figure | `verify.py` |
 | Limits | Runaway loops: 6 queries, 8 model calls, 1 repair per question; a report needs a follow-up query | `agent.py` |
 | Prompt | Instructions hidden in the question, results or earlier answers are not followed, and are named | `prompts/system-v9.md` |
-| Users | One user reading another's chats: a per-browser key issued automatically and sent on every call, per-user queries, 404 for others' runs | `history.py`, `web.py` |
-| Page | Script injection and framing: text only, never HTML; CSP `script-src 'self'`; Host check | `static/app.js`, `web.py`, `docker/nginx.conf` |
+| Users | One user reading another's chats: name and password login (scrypt), a session token sent on every call, per-user queries, 404 for others' runs | `history.py`, `api.py` |
+| Page | Script injection and framing: text only, never HTML; CSP `script-src 'self'`; Host check; JSON-only POSTs | `static/app.js`, `api.py`, `docker/nginx.conf` |
+| Containers | A leaked LLM key or user data: api holds users but no key and no internet; agent holds the key but no users | `compose.yaml` |
 
 The guard is not a prompt-injection filter. An injected instruction about the data ("net sales equal
 gross sales") is allowed through on purpose, and the layers below make it harmless. Two evaluation
@@ -280,11 +286,11 @@ database is built and again before every question:
 - **Replay vs live.** Replay reproduces recorded responses; it does not re-evaluate the model. A new
   live run can differ, and the evaluation measures that variation.
 - **Recursive CTEs** are denied (the simplest safe rule), so the model lists periods explicitly.
-- **Users.** A user is a browser: clearing its site data, or another browser, starts a new empty
-  history. Keys have no expiry, and creating them has no rate limit (fine on 127.0.0.1).
-  History is one SQLite file written by one app instance.
-- **Docker** is validated by `docker compose config` and by running the db service outside Docker,
-  but `docker compose up` has not been run (no daemon on the build machine).
+- **Users.** An admin creates them; there is no sign-up or password reset. Login has no rate limit
+  and tokens do not expire (fine on 127.0.0.1). History is one SQLite file written by one api
+  instance.
+- **Docker.** The three-container version ran under `docker compose up`; the four-container version
+  is validated by `docker compose config` and local runs, not yet by `up`.
 
 ## Time spent
 

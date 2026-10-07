@@ -4,9 +4,12 @@
   uv run --env-file .env python -m investigator ask "Which segment drove it?" --parent <run_id>   # same chat
   uv run python -m investigator replay <run_id>    # recorded responses, no API key
   uv run python -m investigator check              # replay every saved run, exit 1 on any difference
-  uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000
+  uv run python -m investigator add-user alice          # asks for a password; users log in on the page
+  uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000 (api + agent)
 """
 import argparse
+import getpass
+import sqlite3
 import sys
 
 from investigator import agent, report
@@ -24,14 +27,36 @@ def main(argv=None) -> int:
     serve = sub.add_parser("serve", help="web UI on 127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
+    agent_p = sub.add_parser("agent", help="serve the agent over HTTP (the agent container)")
+    agent_p.add_argument("--port", type=int, default=8002)
+    agent_p.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
+    sub.add_parser("add-user", help="create a user who can log in to the web UI").add_argument("name")
     db = sub.add_parser("db", help="serve the read-only query tool over HTTP (the db container)")
     db.add_argument("--port", type=int, default=8001)
     db.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
     a = p.parse_args(argv)
 
     if a.cmd == "serve":
-        from investigator.web import serve
+        from investigator.api import serve
         serve(a.port, a.host)
+        return 0
+
+    if a.cmd == "agent":
+        from investigator import agent_service
+        print(f"agent service on port {a.port}, model {agent_service.config()['model']}")
+        agent_service.serve(a.port, a.host).serve_forever()
+        return 0
+
+    if a.cmd == "add-user":
+        from investigator import history
+        password = getpass.getpass(f"password for {a.name}: ")
+        if len(password) < 8 or password != getpass.getpass("again: "):
+            sys.exit("passwords must match and be at least 8 characters")
+        try:
+            history.add_user(a.name, password)
+        except sqlite3.IntegrityError:
+            sys.exit(f"a user named {a.name!r} already exists")
+        print(f"created {a.name}; they can log in on the web UI")
         return 0
 
     if a.cmd == "db":

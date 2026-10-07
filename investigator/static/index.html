@@ -46,6 +46,21 @@ svg.i.sm { width: 15px; height: 15px; }
 
 /* Sidebar */
 aside { background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+[hidden] { display: none !important; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.login form { width: min(360px, 100%); display: flex; flex-direction: column; gap: 6px; padding: 28px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); }
+.login .logo { width: 44px; height: 44px; border-radius: 12px; margin-bottom: 8px; }
+.login h1 { font-size: 20px; margin: 0; }
+.login p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+.login label { font-size: 13px; font-weight: 600; margin-top: 6px; }
+.login input { min-height: 44px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg); color: inherit; font: inherit; }
+.login input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.login .login-error { color: var(--bad); min-height: 1.4em; margin: 6px 0 0; }
+.login .primary { justify-content: center; background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.login .primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+.mode .who { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.mode .who button { min-height: 32px; padding: 0 8px; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; border-radius: 6px; }
+.mode .who button:hover { background: var(--sunken); }
 .brand { display: flex; gap: 10px; align-items: center; padding: 16px 16px 12px; }
 .logo { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; flex: none; }
 .brand strong { display: block; font-size: 15px; line-height: 1.2; }
@@ -210,7 +225,20 @@ pre { font: 13px/1.5 var(--mono); background: var(--panel); border: 1px solid va
 </head>
 <body>
 <a class="skip" href="#q">Skip to the question box</a>
-<div class="app">
+<main class="login" id="login" hidden>
+  <form id="login-form">
+    <span class="logo"><span data-icon="search"></span></span>
+    <h1>Data Investigator</h1>
+    <p>Log in to ask questions and see your chats.</p>
+    <label for="name">Name</label>
+    <input id="name" autocomplete="username" maxlength="100" required>
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" maxlength="200" required>
+    <p class="login-error" id="login-error" role="alert"></p>
+    <button class="btn primary" type="submit">Log in</button>
+  </form>
+</main>
+<div class="app" id="app" hidden>
   <aside id="side" aria-label="Chat history">
     <div class="brand"><span class="logo"><span data-icon="search"></span></span><div><strong>Data Investigator</strong><small>Answers with checked figures</small></div></div>
     <button class="btn new" id="new" type="button"><span data-icon="plus"></span>New chat</button>

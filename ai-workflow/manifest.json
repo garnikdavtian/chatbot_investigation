@@ -33,7 +33,7 @@
         "prompts/guard-v1.md",
         "prompts/compact-v1.md"
       ],
-      "notes": "OpenAI Chat Completions through langchain-openai ChatOpenAI (use_responses_api=False: 1.6.7 otherwise switches gpt-6 models with tools to the Responses API), run as a LangGraph 1.2.14 graph guard -> reason <-> act. gpt-6-luna, reasoning_effort none, provider default temperature and max tokens, strict function tools, parallel_tool_calls false, timeout 60 s, 2 retries. tool_choice: guard forces its verdict tool; reason uses auto on a question's first call, required after a tool result, and forces submit_report at the query limit; compaction uses none. Chosen by evals/run_eval.py against gpt-5.6-luna and gpt-6-sol; v6 re-measured on 14 questions x 3. Each run records its model settings under config."
+      "notes": "OpenAI Chat Completions through langchain-openai ChatOpenAI (use_responses_api=False: 1.6.7 otherwise switches gpt-6 models with tools to the Responses API), run as a LangGraph 1.2.14 graph guard -> reason <-> act. gpt-6-luna, reasoning_effort none, provider default temperature and max tokens, strict function tools, parallel_tool_calls false, timeout 60 s, 2 retries. tool_choice: guard forces its verdict tool; reason uses auto on a question's first call, required after a tool result, and forces submit_report at the query limit; compaction uses none. Chosen by evals/run_eval.py against gpt-5.6-luna and gpt-6-sol; v6 re-measured on 14 questions x 3. Each run records its model settings under config. The api container is FastAPI 0.142.2 on uvicorn 0.54.0 (httpx 0.28.1 in dev, for TestClient); it calls the agent container over HTTP for every question."
     },
     "skills": {
       "status": "used",

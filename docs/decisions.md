@@ -8,7 +8,7 @@ every figure and records everything needed to replay the run.
 ## Shape: a modular monolith
 
 ```
-adapters    __main__.py (CLI)            web.py + static/index.html (local UI)
+adapters    __main__.py (CLI)    api.py (FastAPI) → agent_service.py + static/ (web page)
                        \                     /
 core                    agent.py   loop, limits, statuses, replay
                   /        |           |            \
@@ -228,7 +228,8 @@ The checked-figures table draws only figures that passed both checks.
 
 **Rejected.** Server-sent events or WebSockets for progress: one streamed `fetch` response is
 enough for one local user. Streamlit: quick to start, but it is a heavy dependency and makes it harder to build an
-evidence-first page. FastAPI: only needed for several users. The upgrade path is noted in `web.py`.
+evidence-first page. FastAPI: only needed for several users. (Superseded by D17: with logins the
+API moved to FastAPI.)
 
 **Docker is optional.** `uv sync` installs the one runtime dependency, `openai`, which brings
 `pydantic`, and SQLite ships with Python. The `Dockerfile` wraps the same commands for a reviewer
@@ -393,56 +394,90 @@ answered a joke request with an investigation.
 **Ceiling.** A classifier can be argued with. A message that talks the guard into "allow" reaches
 `reason`, which has the same capability limits and checks as before.
 
-## D15. Users and history: an automatic key per browser, a separate SQLite file
+## D15. Users and history: name and password, a separate SQLite file
 
-- **Separate database.** Chats live in `data/history.sqlite` (`HISTORY_DB` in Docker), written only
-  by the app. The sales database stays read-only and in its own container.
-- **Keys, issued under the hood.** On its first visit the page calls `POST /api/session`, which
-  creates an anonymous user and returns a random key (`secrets.token_urlsafe(32)`); only its SHA-256
-  is stored. The key is high-entropy, so a fast hash without salt is enough. Nobody signs in or sees
-  a key. A first version had a sign-in form with keys from a CLI command; the candidate's manual test
-  rejected it, since the requirement was separation between users, not logins.
-- `/api/session` takes JSON only, like every POST, so another site's form cannot create users.
-- **Isolation.** Every `/api` call except `/api/config` needs `Authorization: Bearer <key>`. Every
-  read filters by user, and another user's run is a 404 for open, export, replay or use as a
-  follow-up parent, so run ids leak nothing. `tests/test_history.py` checks this over real HTTP.
-- The page keeps the key in `localStorage` and sends it as a header. A header, unlike a cookie, is
-  never attached by another site, so there is no CSRF.
-  A plain link cannot send it, so "Export .md" fetches the file and saves it from memory. If the
-  server answers 401 (it no longer knows the key, e.g. a fresh Docker volume), the page gets a new
-  key and retries once; the retry is safe because a 401 means nothing ran. The old key's chats stay
-  with the old history.
+- **Separate database.** Users, login sessions and chats live in `data/history.sqlite` (`HISTORY_DB`
+  in Docker), read and written only by the api container. The sales database stays read-only in the
+  db container, where the model's SQL runs; users there would be one gateway bug away from the model.
+- **Login.** An admin creates users (`python -m investigator add-user <name>`, password prompted).
+  Passwords are stored as salted scrypt hashes (`hashlib.scrypt`, stdlib); login compares with
+  `hmac.compare_digest` and hashes even for an unknown name, so timing does not reveal which names
+  exist. A login returns a random token; only its SHA-256 is stored, in `sessions`, and logout
+  deletes it.
+- **Chats.** A chat is a chain of runs linked by `parent_run_id`, and each run carries the
+  conversation state. Opening a past chat and asking sends its last run to the agent, so no chat
+  table is needed until chats must be renamed or deleted.
+- **Isolation.** Every `/api` call except `/api/config` and `/api/login` needs
+  `Authorization: Bearer <token>`. Every read filters by user, and another user's run is a 404 for
+  open, export, replay or use as a follow-up parent. `tests/test_history.py` checks this through the
+  real api and agent service.
+- The page keeps the token in `localStorage` and sends it as a header, never a cookie, so another
+  site cannot make the browser send it (no CSRF). "Export .md" fetches the file with the header and
+  saves it from memory. A 401 returns the page to the login screen.
 - **Committed demo runs** stay files in `runs/`: the brief wants them in the repository, and
   `investigator check` replays them without a key.
 
-**Rejected.** Logins, roles, key expiry, rate limits on `/api/session`: not needed on 127.0.0.1. A
-user is a browser, so clearing site data starts a new history; logins are the upgrade when a person
-must see their chats from several devices. Postgres for history: one app instance writes it, so a SQLite file on
-a volume is enough until several replicas share it.
+**History of this decision.** The first version had a pasted app key; the candidate rejected it. The
+second issued an anonymous key per browser; the candidate then asked for named users who can return
+to their chats, which needs a login.
 
-## D16. Three containers: ui, app, db
+**Rejected.** Self sign-up (the candidate chose admin-created users). JWTs: a random token looked up
+in SQLite can be revoked by deleting a row. Login rate limits and token expiry: not needed on
+127.0.0.1; they are the next step before any wider exposure. Postgres for history: one api instance
+writes it.
+
+## D16. Four containers: ui, api, agent, db
 
 ```
-browser → ui  (nginx: page, script, /api proxy; published on 127.0.0.1:8000 only)
-            → app (API + LangGraph agent; LLM key from .env; history volume)
-                 → db (read-only query service; the sales database mounted :ro; internal network)
+browser → ui    (nginx: page, script, /api proxy; published on 127.0.0.1:8000 only)
+            → api   (FastAPI: login, chats, export; history volume; no LLM key, no internet)
+                → agent (LangGraph graph, waiting for calls; LLM key from .env)
+                     → db (read-only query service; the sales database mounted :ro)
 ```
 
-- **db** runs `python -m investigator db`: `POST /query` runs `gateway.run_sql` and returns its
-  result; `GET /data` returns the rows and SHA that the verifier and the data contract use. Its
-  network is `internal`, so it has no internet, and only app can reach it. The image has no copy of
-  the database; the only copy is the read-only mount.
-- **app** reaches it through `DB_URL`; `gateway.query` and `gateway.snapshot` take a file path or
-  that URL, so nothing else changed. All 7 demo runs reproduce through the HTTP service, including
-  the `DELETE`, which is rejected over the wire.
-- **ui** is nginx with the same Content-Security-Policy as `web.py` (a test compares them), and
-  `proxy_buffering off` so progress still streams.
-- One image serves app and db. The user asked for four containers, with a separate API; the API and
-  the agent stay in one process, because splitting them would add a network hop and a second
-  service for one function call.
+| Network | Members | Internet |
+|---|---|---|
+| edge | ui | yes, only so its port can be published |
+| front | ui, api | no (internal) |
+| mid | api, agent | no (internal) |
+| back | agent, db | no (internal) |
+| egress | agent | yes, for the LLM API |
 
-Without Docker, `uv run python -m investigator serve` still runs everything in one process.
+- **db** runs `python -m investigator db`: `POST /query` runs `gateway.run_sql`; `GET /data` returns
+  the rows and SHA the verifier uses. The image has no copy of the database.
+- **agent** runs `python -m investigator agent`: `POST /invoke {question, parent}` streams NDJSON
+  progress and then the run; `POST /replay` re-runs a recorded run. It keeps no state: the api sends
+  the chat's last run with each question, so a restart loses nothing and users cannot leak into
+  each other's context. "Waiting for messages" is simply a running HTTP service with the graph
+  compiled at start; a queue would only matter if a question had to survive an api restart.
+- **api** is FastAPI (D17). It reads the chat from history, calls the agent, streams the lines to
+  the page and saves the run when the last line arrives, on its own thread, so a closed page does
+  not lose the run.
+- **ui** is nginx with the same Content-Security-Policy as `api.py` (a test compares them),
+  `proxy_buffering off` so progress streams, and a 10 KB body limit.
+- One image serves api, agent and db; compose sets each one's command.
 
-**Not verified here.** `docker compose config` validates the file, but the Docker daemon was not
-available on the build machine, so `docker compose up` has not been run.
+The split's point is containment: the container with user data has no LLM key or internet, and the
+container with the key has no user data. Without Docker, `uv run python -m investigator serve` runs
+the agent service on a thread and the api in front of it, still over HTTP, so there is one code path.
+
+**Verified.** The three-container version ran under `docker compose up` on the candidate's machine.
+The four-container file passes `docker compose config`; `up` on it has not been run yet.
+
+## D17. FastAPI for the api, the standard library for internal services
+
+The api now has logins, a dependency for the current user, validated request bodies and eight
+routes, which is the trigger the old `web.py` named for moving to FastAPI. FastAPI gives a
+`Depends(current_user)` on every route, pydantic models with length limits (the report schema
+already uses pydantic), `TrustedHostMiddleware` for the Host check and `StreamingResponse` for the
+NDJSON progress. A small middleware keeps two earlier guards: POSTs must be JSON (415 otherwise),
+and every response carries the CSP, `nosniff` and `no-store` headers. FastAPI's generated docs are
+off.
+
+The agent and db services stay on `http.server`: each has one or two internal routes, no users,
+and the agent's `on_step` callback writes each progress line straight to the socket. Under FastAPI
+it would need a thread and a queue just to stream.
+
+**Rejected.** FastAPI everywhere: more code for internal services with no routes to validate.
+httpx for the api → agent call: `urllib` already streams lines.
 
