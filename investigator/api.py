@@ -11,6 +11,7 @@
   POST /api/reports {run_id}        save an answer's checked figures as a report -> {"report_id"}
   GET  /api/reports                 your saved reports
   POST /api/reports/{id}/run {from_month, to_month}  the report's figures per month -> {"report", "columns", "rows"}
+  GET  /api/compare                 the faulty join against the rules
 
 Every other call needs "Authorization: Bearer <token>". Another user's run is a 404, so run ids reveal nothing.
 A header, not a cookie: another site cannot make the browser send it, so no CSRF. This container holds the
@@ -231,6 +232,12 @@ def run_report(report_id: int, body: Months, user: User):
     return {"report": saved,
             "columns": ["month"] + [f"{metric}_cents" if seg == "all" else f"{seg}_{metric}_cents" for seg, metric in cols],
             "rows": [[m["month"]] + [m.get(seg, {}).get(f"{metric}_cents", 0) for seg, metric in cols] for m in months]}
+
+
+@app.get("/api/compare")
+def compare(user: User):
+    with call_agent("/compare", timeout=30) as r:
+        return json.load(r)
 
 
 def serve(port: int = 8000, host: str = "127.0.0.1") -> None:

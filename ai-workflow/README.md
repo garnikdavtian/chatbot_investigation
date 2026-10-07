@@ -122,7 +122,7 @@ evaluation gained 4 chat cases so this cannot regress unseen.
 
 ```bash
 uv sync
-uv run pytest                              # 62 tests, scripted and replayed model responses
+uv run pytest                              # 63 tests, scripted and replayed model responses
 uv run python -m investigator check        # replay every saved real run in runs/
 uv run python -m evals.run_eval --rescore  # re-score the saved evaluation runs
 uv run python -m investigator serve        # UI with your chats and replay, http://127.0.0.1:8000

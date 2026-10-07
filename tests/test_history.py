@@ -139,3 +139,11 @@ def test_a_saved_report_reruns_its_checked_figures_for_any_months(client):
     unchecked = saved_answer(alice_id, [figure("net", "2026-08-01", "2026-09-01", status="wrong")], "r2")
     assert client.post("/api/reports", headers=alice, json={"run_id": unchecked}).status_code == 400
 
+
+def test_compare_shows_the_planted_traps_next_to_the_rules(client):
+    assert client.get("/api/compare").status_code == 401
+    body = client.get("/api/compare", headers=login(client, "alice")).json()
+    sep = {k: dict(zip(c["columns"], next(r for r in c["rows"] if r[0] == "2026-09"))) for k, c in body.items()}
+    traps = EXPECTED["traps"]
+    assert sep["faulty_join"]["correct_gross_cents"] == EXPECTED["periods"][1]["gross_cents"]
+    assert sep["faulty_join"]["naive_join_gross_cents"] == traps["naive_join_september_gross_cents"]

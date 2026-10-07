@@ -45,7 +45,7 @@ const FIG = {query_error: "the query computed a wrong value", unsupported: "not 
 const METRICS = ["gross", "refunds", "net"];
 const $ = id => document.getElementById(id);
 // thread = {root, runs: [full run records]}. nav changes on every navigation, so a late reply cannot draw into another view.
-// page = {title, el}: a saved report, shown instead of a thread.
+// page = {title, el}: a saved report or the comparison, shown instead of a thread.
 let config = {}, runs = [], reports = [], page = null, thread = null, pending = null, notice = null, nav = 0, key = null, me = null;
 // The session token from login, sent as a header, not a cookie, so other sites cannot use it.
 try { key = localStorage.getItem("investigator-token"); me = localStorage.getItem("investigator-name"); } catch { /* storage blocked: log in each visit */ }
@@ -547,7 +547,7 @@ async function exportMd(id, out) {
   } catch (e) { out.textContent = `Export failed: ${e.message}`; }
 }
 
-// ---- saved reports: figures computed by code, no model
+// ---- saved reports and the comparison: figures computed by code, no model
 const centsTable = (columns, rows) => resultTable(columns, rows, (v, col) => col.endsWith("_cents") && typeof v === "number" ? fmtCents(v) : v);
 const barChart = (title, columns, rows, y, foot) => chartView({run_id: "page", queries: [{id: "rows", columns, rows, error: null}],
   report: {chart: {kind: "bar", query_id: "rows", x: "month", y, unit: "cents", title}}}, foot) || "";  // "": no chart, the table stays
@@ -581,13 +581,28 @@ function reportView(rep) {
     h("form", {class: "card tool", onsubmit: run}, h("label", {}, "From", from), h("label", {}, "To", to),
       h("button", {type: "submit", class: "btn"}, icon("replay", "sm"), "Run")), out);
 }
+function compareView(cmp) {
+  const fj = cmp.faulty_join;
+  const foot = "Computed by the SQL shown below. The rule side is checked against the business rules before it is shown.";
+  const sql = (pair, alt, rule) => h("div", {class: "notes"}, h("section", {}, h("h3", {}, alt), h("pre", {}, pair.sql_alt)),
+    h("section", {}, h("h3", {}, rule), h("pre", {}, pair.sql_rule)));
+  return h("div", {class: "page"},
+    h("h2", {class: "page-h"}, "Before and after correcting a faulty join"),
+    h("p", {class: "caption", style: "margin:0"}, "Joining refund rows to orders repeats an order's amount once for each of its refunds (rule 3). Summing each table on its own corrects it."),
+    barChart("Gross sales: faulty join vs corrected", fj.columns, fj.rows, ["naive_join_gross_cents", "correct_gross_cents"], foot),
+    centsTable(fj.columns, fj.rows), sql(fj, "Before: orders joined to refunds", "After: orders summed on their own"));
+}
 async function showPage(id) {
   const token = ++nav;
   thread = null;
   try {
-    const rep = reports.find(r => `report-${r.report_id}` === id);
-    if (!rep) throw new Error("there is no such saved report");
-    const next = {title: rep.name, el: reportView(rep)};
+    let next;
+    if (id === "compare") next = {title: "Compare with the rules", el: compareView(await api("/api/compare"))};
+    else {
+      const rep = reports.find(r => `report-${r.report_id}` === id);
+      if (!rep) throw new Error("there is no such saved report");
+      next = {title: rep.name, el: reportView(rep)};
+    }
     if (token === nav) page = next;
   } catch (e) { if (token === nav) notice = {nav, question: "", error: `Could not open this page: ${e.message}`}; }
   if (token === nav) render();
@@ -654,7 +669,7 @@ function go(id) {
 async function route() {
   const id = location.hash.slice(1);
   notice = null; page = null;
-  if (id.startsWith("report-")) return showPage(id);
+  if (id === "compare" || id.startsWith("report-")) return showPage(id);
   if (!id) { nav++; thread = null; render(); $("q").focus(); return; }
   const root = rootOf(id), token = ++nav;
   const ids = runs.filter(r => rootOf(r.run_id) === root).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(r => r.run_id);
@@ -708,6 +723,7 @@ async function init() {
   $("composer").addEventListener("submit", e => { e.preventDefault(); const q = $("q").value.trim(); if (q) ask(q); });
   $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); } });
   $("q").addEventListener("input", grow);
+  $("compare").addEventListener("click", () => go("compare"));
   $("new").addEventListener("click", () => { setDrawer(false); if (location.hash) history.pushState(null, "", location.pathname); route(); });
   $("menu").addEventListener("click", () => setDrawer(!$("side").classList.contains("open")));
   $("scrim").addEventListener("click", () => setDrawer(false));
