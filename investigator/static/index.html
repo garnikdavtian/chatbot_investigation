@@ -216,6 +216,23 @@ pre { font: 13px/1.5 var(--mono); background: var(--panel); border: 1px solid va
 .hint { max-width: 768px; margin: 8px auto 0; text-align: center; font-size: 12px; color: var(--muted); }
 .scrim { display: none; }
 
+/* Tips: open while the pointer or keyboard focus is on them, no JS */
+.tips { position: relative; }
+.tips-pop { display: none; position: absolute; z-index: 26; top: calc(100% + 6px); right: 0; width: min(400px, calc(100vw - 24px));
+  max-height: calc(100dvh - 76px); overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 12px 14px; font-size: 13px; line-height: 1.45; }
+.tips-pop::before { content: ""; position: absolute; inset: -8px 0 auto; height: 8px; } /* keeps hover across the gap */
+.tips:hover .tips-pop, .tips:focus-within .tips-pop { display: block; }
+.tips-pop strong { display: block; font-size: 14px; margin: 4px 0 2px; }
+.tips-pop p { margin: 0 0 8px; color: var(--muted); }
+.tips-pop .kinds { list-style: none; margin: 6px 0 10px; padding: 0; }
+.tips-pop .kinds li { color: var(--muted); }
+.tips-pop .kinds b { color: var(--text); }
+.ex { display: block; width: 100%; margin: 3px 0 9px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: none;
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.ex:hover, .ex:focus-visible { background: var(--hover); }
+.tip-note { font-size: 12px; }
+
 /* Agent inspector: a small panel over the page; the graph is the one in investigator/agent.py */
 .top #inspect { margin-left: auto; }
 .insp { position: fixed; z-index: 25; top: 60px; right: 16px; width: min(340px, calc(100vw - 32px)); max-height: calc(100dvh - 76px); overflow-y: auto;
@@ -286,6 +303,30 @@ pre { font: 13px/1.5 var(--mono); background: var(--panel); border: 1px solid va
       <button class="icon-btn" id="menu" type="button" aria-label="Show chat history" aria-expanded="false" aria-controls="side"><span data-icon="menu"></span></button>
       <h1 id="title">New chat</h1>
       <button class="ghost" id="inspect" type="button" aria-expanded="false" aria-controls="inspector"><span data-icon="activity"></span>Inspector</button>
+      <div class="tips">
+        <button class="ghost" id="tips" type="button" aria-controls="tips-pop"><span data-icon="info"></span>Tips</button>
+        <div class="tips-pop" id="tips-pop" role="region" aria-label="What you can ask">
+          <strong>Ask about the sales data</strong>
+          <p>10 customers, 30 orders and 8 refunds, August to October 1, 2026. Ask a follow-up in the same chat, such as
+            "Break the refund increase down by customer segment". Small talk and changes to the data are refused.</p>
+          <button class="ex" type="button">Why did net sales change between August and September 2026?</button>
+          <strong>Ask for a chart</strong>
+          <p>Say what you want to see; the agent picks the chart that fits the data.</p>
+          <ul class="kinds">
+            <li><b>Bar</b> · compare months<button class="ex" type="button">Visualize gross sales, refunds and net sales by month</button></li>
+            <li><b>Ranked bars</b> · sort many items<button class="ex" type="button">Chart September 2026 net sales per customer, highest first</button></li>
+            <li><b>Stacked bars</b> · parts of a whole<button class="ex" type="button">Show refunds by customer segment per month as a stacked bar chart</button></li>
+            <li><b>Line</b> · a trend<button class="ex" type="button">Plot weekly net sales for August and September 2026</button></li>
+            <li><b>Area</b> · a running total<button class="ex" type="button">Show cumulative net sales day by day in September 2026 as an area chart</button></li>
+            <li><b>Waterfall</b> · what moved a total<button class="ex" type="button">Show how net sales got from August to September 2026 as a waterfall: August net, the change in gross sales, the change in refunds, September net</button></li>
+            <li><b>Scatter</b> · two measures per item<button class="ex" type="button">Scatter plot of each customer's gross sales against their refunds</button></li>
+            <li><b>Headline number</b> · one figure<button class="ex" type="button">Show September 2026 net sales as a headline number</button></li>
+          </ul>
+          <p class="tip-note">Click an example to put it in the question box. Every chart comes with its SQL and result table, and is
+            checked for shape (a waterfall must add up). Monthly and segment totals are checked against the rules; per-week and
+            per-customer values are drawn, not checked.</p>
+        </div>
+      </div>
     </header>
     <section class="insp" id="inspector" aria-label="Agent inspector" hidden>
       <div class="insp-h"><strong>Agent inspector</strong>

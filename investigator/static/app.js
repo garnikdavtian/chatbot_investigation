@@ -24,6 +24,7 @@ const ICONS = {
   table: [["rect", {x: 3, y: 3, width: 18, height: 18, rx: 2}], "M3 9h18", "M3 15h18", "M12 3v18"],
   message: ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"],
   ban: [["circle", {cx: 12, cy: 12, r: 10}], "m4.9 4.9 14.2 14.2"],
+  info: [["circle", {cx: 12, cy: 12, r: 10}], "M12 16v-4", "M12 8h.01"],
   waterfall: ["M3 3v16a2 2 0 0 0 2 2h16", "M7 17V8", "M11 8v3", "M15 11v3", "M19 14v3"],
   activity: ["M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"],
 };
@@ -800,6 +801,7 @@ async function init() {
   $("composer").addEventListener("submit", e => { e.preventDefault(); const q = $("q").value.trim(); if (q) ask(q); });
   $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); } });
   $("q").addEventListener("input", grow);
+  document.querySelectorAll(".ex").forEach(b => b.addEventListener("click", () => { $("q").value = b.textContent; grow(); $("q").focus(); }));
   $("compare").addEventListener("click", () => go("compare"));
   $("new").addEventListener("click", () => { setDrawer(false); if (location.hash) history.pushState(null, "", location.pathname); route(); });
   $("menu").addEventListener("click", () => setDrawer(!$("side").classList.contains("open")));

@@ -88,6 +88,10 @@ The **Inspector** button (top right of the page) opens a small panel with this g
 runs, it highlights the node the agent is in and counts each tool call as it starts. For a saved chat,
 it replays the last answer's path from the record.
 
+The **Tips** button next to it lists what you can ask, with one clickable example for each of the 8 chart
+kinds (bar, ranked bars, stacked bars, line, area, waterfall, scatter, headline number). Each example was
+run live, 1 to 3 times, and came back verified every time except one of three ranked-bar runs.
+
 Every answer ends with a status: `verified`, `answered` (no figures to check), `blocked`,
 `unverified` (a check failed; the problems are shown), `incomplete` (a limit was hit) or `failed`.
 
