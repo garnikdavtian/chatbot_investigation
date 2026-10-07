@@ -14,13 +14,24 @@ is saved, so another person can replay the run without an API key.
 
 ## Quick start
 
-You need Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
+**One command:** `./start.sh` (needs Docker or [uv](https://docs.astral.sh/uv/)).
+
+```bash
+./start.sh            # asks for a password once, then open http://127.0.0.1:8000 and log in as "reviewer"
+```
+
+It creates `.env` from `.env.example` if missing, starts the four containers when Docker is running
+(otherwise one process with uv), and creates the login `reviewer` with the saved demo chats, so the
+page has content without an API key. Set `LLM_API_KEY` in `.env` to ask new questions. Without a
+key, the demo chats, replay, saved reports and the comparison page all work.
+
+**By hand**, with Python 3.12 or later and uv:
 
 ```bash
 uv sync
-uv run pytest                          # 63 tests, no API key
+uv run pytest                          # 64 tests, no API key
 uv run python -m investigator check    # replay every saved live run, no API key
-uv run python -m investigator add-user alice          # asks for a password
+uv run python -m investigator add-user alice --demo-chats   # asks for a password; --demo-chats adds runs/
 uv run --env-file .env python -m investigator serve   # http://127.0.0.1:8000, log in as alice
 ```
 
@@ -337,7 +348,8 @@ evals/          model evaluation: script, results, saved runs, round-1 archive
 tests/          data, gateway (+ db service), agent graph (scripted model), demo checks, users and history, page CSP
 docs/           design decisions, LLM usage note, screenshot, v1-chats/ (the manual test that led to the rewrite)
 docker/         nginx.conf for the ui container
-compose.yaml    ui, app and db containers; Dockerfile builds the app and db image
+compose.yaml    ui, api, agent and db containers; Dockerfile builds the one image api, agent and db share
+start.sh        one command: .env, Docker or uv, a login with the demo chats
 ai-workflow/    AI setup: manifest, README, sanitized Claude Code settings and hooks
 ```
 

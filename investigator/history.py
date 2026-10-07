@@ -60,6 +60,11 @@ def add_user(name: str, password: str) -> int:
                            (name, f"{salt.hex()}:{_scrypt(password, salt).hex()}", _now())).lastrowid
 
 
+def user_exists(name: str) -> bool:
+    with _db() as con:
+        return con.execute("SELECT 1 FROM users WHERE name = ?", (name,)).fetchone() is not None
+
+
 def login(name: str, password: str) -> str | None:
     """A new session token, or None. The hash is computed even for an unknown name, so timing does not tell
     which names exist."""

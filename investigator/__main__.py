@@ -5,10 +5,12 @@
   uv run python -m investigator replay <run_id>    # recorded responses, no API key
   uv run python -m investigator check              # replay every saved run, exit 1 on any difference
   uv run python -m investigator add-user alice          # asks for a password; users log in on the page
+  uv run python -m investigator add-user alice --demo-chats   # ... and gives them the saved demo chats in runs/
   uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000 (api + agent)
 """
 import argparse
 import getpass
+import json
 import sqlite3
 import sys
 
@@ -30,7 +32,10 @@ def main(argv=None) -> int:
     agent_p = sub.add_parser("agent", help="serve the agent over HTTP (the agent container)")
     agent_p.add_argument("--port", type=int, default=8002)
     agent_p.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
-    sub.add_parser("add-user", help="create a user who can log in to the web UI").add_argument("name")
+    add_user = sub.add_parser("add-user", help="create a user who can log in to the web UI")
+    add_user.add_argument("name")
+    add_user.add_argument("--demo-chats", action="store_true",
+                          help="also give the user the saved demo chats in runs/ (each run can belong to one user)")
     db = sub.add_parser("db", help="serve the read-only query tool over HTTP (the db container)")
     db.add_argument("--port", type=int, default=8001)
     db.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
@@ -49,14 +54,23 @@ def main(argv=None) -> int:
 
     if a.cmd == "add-user":
         from investigator import history
+        if history.user_exists(a.name):  # checked before the prompt, so a rerun of start.sh asks nothing
+            sys.exit(f"a user named {a.name!r} already exists")
         password = getpass.getpass(f"password for {a.name}: ")
         if len(password) < 8 or password != getpass.getpass("again: "):
             sys.exit("passwords must match and be at least 8 characters")
         try:
-            history.add_user(a.name, password)
+            user_id = history.add_user(a.name, password)
         except sqlite3.IntegrityError:
             sys.exit(f"a user named {a.name!r} already exists")
-        print(f"created {a.name}; they can log in on the web UI")
+        demo = 0
+        for path in sorted(report.RUNS.glob("*.json")) if a.demo_chats else []:
+            try:
+                history.save(json.loads(path.read_text()), user_id)
+                demo += 1
+            except sqlite3.IntegrityError:
+                pass  # run ids are unique: another user already has this demo chat
+        print(f"created {a.name}" + (f" with {demo} demo chat messages" if a.demo_chats else "") + "; they can log in on the web UI")
         return 0
 
     if a.cmd == "db":

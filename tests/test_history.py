@@ -149,3 +149,16 @@ def test_compare_shows_the_planted_traps_next_to_the_rules(client):
     assert sep["faulty_join"]["naive_join_gross_cents"] == traps["naive_join_september_gross_cents"]
     assert sep["refund_month"]["refunds_by_refund_date_cents"] == EXPECTED["periods"][1]["refunds_cents"]
     assert sep["refund_month"]["refunds_by_order_date_cents"] == traps["refunds_by_order_date_september_cents"]
+
+
+def test_add_user_with_demo_chats_asks_once_and_shares_no_run(client, monkeypatch, capsys):
+    from investigator.__main__ import main
+    prompts = []
+    monkeypatch.setattr("getpass.getpass", lambda prompt: prompts.append(prompt) or "correct horse")
+    assert main(["add-user", "reviewer", "--demo-chats"]) == 0
+    demo = len(list(Path("runs").glob("*.json")))
+    assert demo and len(history.list_runs(1)) == demo and len(prompts) == 2
+    with pytest.raises(SystemExit):  # start.sh reruns it: the user exists, so no password prompt
+        main(["add-user", "reviewer", "--demo-chats"])
+    assert len(prompts) == 2
+    assert main(["add-user", "bob", "--demo-chats"]) == 0 and history.list_runs(2) == []  # each run has one owner
