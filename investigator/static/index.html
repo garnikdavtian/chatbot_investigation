@@ -84,7 +84,7 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .s-answered { color: var(--idle); background: var(--idle-bg); } .s-blocked { color: var(--warn); background: var(--warn-bg); }
 .keyrow { display: flex; gap: 8px; max-width: 460px; margin: 16px auto 0; }
 .keyin { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); font: inherit; }
-.mode .signout { margin-left: auto; min-height: 32px; }
+.mode .signout { margin-left: auto; min-height: 32px; flex-shrink: 0; white-space: nowrap; }
 .banner { display: flex; gap: 10px; border-radius: 12px; padding: 12px 14px; font-size: 14px; }
 .banner ul { margin: 6px 0 0; padding-left: 18px; }
 .banner p { margin: 0; }
