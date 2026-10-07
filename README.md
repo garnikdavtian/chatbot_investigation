@@ -56,7 +56,7 @@ Other commands:
 
 **The web page** is a chat. Nobody signs in: on the first visit the server issues the browser its own
 key, which the page keeps and sends with every call, so each browser sees only its own chats. The page
-opens on an empty chat with four suggested questions, and the left panel lists past chats. The
+opens on an empty chat with six suggested questions (two of them charts: a weekly trend and a waterfall), and the left panel lists past chats. The
 question box stays at the bottom (Enter sends, Shift+Enter adds a line), and a message in an open
 chat continues it. While the agent works, the page shows each step: the guard's check, then each
 query with its purpose and row count. Each answer shows, answer first:

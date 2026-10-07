@@ -24,12 +24,15 @@ const ICONS = {
   table: [["rect", {x: 3, y: 3, width: 18, height: 18, rx: 2}], "M3 9h18", "M3 15h18", "M12 3v18"],
   message: ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"],
   ban: [["circle", {cx: 12, cy: 12, r: 10}], "m4.9 4.9 14.2 14.2"],
+  waterfall: ["M3 3v16a2 2 0 0 0 2 2h16", "M7 17V8", "M11 8v3", "M15 11v3", "M19 14v3"],
 };
 const SUGGESTIONS = [
   {icon: "trend", title: "Explain a change", text: "Why did net sales change between August and September 2026?"},
   {icon: "users", title: "Find what drove it", text: "Which customer segment drove the change in refunds from August to September 2026?"},
-  {icon: "lineChart", title: "Visualize by month", text: "Visualize gross sales, refunds and net sales by month"},
-  {icon: "barChart", title: "Compare segments", text: "Plot September 2026 net sales by customer segment"}];
+  {icon: "barChart", title: "Visualize by month", text: "Visualize gross sales, refunds and net sales by month"},
+  {icon: "barChart", title: "Compare segments", text: "Plot September 2026 net sales by customer segment"},
+  {icon: "lineChart", title: "Plot a weekly trend", text: "Plot weekly net sales for August and September 2026"},
+  {icon: "waterfall", title: "Bridge two months", text: "Show how net sales got from August to September 2026 as a waterfall"}];
 const STATUS = {
   verified: {label: "Verified", icon: "circleCheck", note: "Every figure is in its query's result and equals the business rules."},
   unverified: {label: "Unverified", icon: "alert", note: "Some checks failed. The problems are listed here; do not rely on those figures."},
