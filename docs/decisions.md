@@ -408,6 +408,10 @@ answered a joke request with an investigation.
   follow-up parent, so run ids leak nothing. `tests/test_history.py` checks this over real HTTP.
 - The page keeps the key in `localStorage` and sends it as a header. A header, unlike a cookie, is
   never attached by another site, so there is no CSRF.
+  A plain link cannot send it, so "Export .md" fetches the file and saves it from memory. If the
+  server answers 401 (it no longer knows the key, e.g. a fresh Docker volume), the page gets a new
+  key and retries once; the retry is safe because a 401 means nothing ran. The old key's chats stay
+  with the old history.
 - **Committed demo runs** stay files in `runs/`: the brief wants them in the repository, and
   `investigator check` replays them without a key.
 

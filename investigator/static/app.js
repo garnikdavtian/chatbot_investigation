@@ -97,22 +97,23 @@ async function ensureKey() {  // first visit: the server issues this browser its
   if (!r.ok) throw new Error(`Could not start a session (${r.status}).`);
   setKey((await r.json()).key);
 }
-function signedOut(r) {  // the server no longer knows this key, e.g. its history was reset
-  if (r.status !== 401) return;
-  setKey(null);
-  throw new Error("This browser's session is no longer recognized. Reload the page to start a new one.");
+// Every API call goes through here. A 401 means the server no longer knows this browser's key, e.g. a
+// fresh Docker volume: get a new key and retry once (the server did nothing, so a retry is safe).
+async function call(path, body) {
+  const once = () => fetch(path, body ? {method: "POST", headers: headers(true), body: JSON.stringify(body)} : {headers: headers()});
+  let r = await once();
+  if (r.status === 401) { setKey(null); await ensureKey(); r = await once(); }
+  return r;
 }
 async function api(path, body) {
-  const r = await fetch(path, body ? {method: "POST", headers: headers(true), body: JSON.stringify(body)} : {headers: headers()});
-  signedOut(r);
+  const r = await call(path, body);
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 }
 // /api/ask answers with one JSON object per line: {"progress": ...} after each graph step, then {"run": ...}.
 async function askStream(body, onProgress) {
-  const r = await fetch("/api/ask", {method: "POST", headers: headers(true), body: JSON.stringify(body)});
-  signedOut(r);
+  const r = await call("/api/ask", body);
   if (!r.ok) {
     let message = r.statusText;
     try { message = (await r.json()).error || message; } catch { /* not JSON */ }
@@ -511,8 +512,7 @@ async function replay(id, out) {
 // A link cannot send the key header, so fetch the file and save it from memory.
 async function exportMd(id, out) {
   try {
-    const r = await fetch(`/api/runs/${id}/report.md`, {headers: headers()});
-    signedOut(r);
+    const r = await call(`/api/runs/${id}/report.md`);
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     const a = h("a", {href: URL.createObjectURL(await r.blob()), download: `${id}.md`});
     a.click();
