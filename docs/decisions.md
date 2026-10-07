@@ -495,12 +495,15 @@ a way to be wrong.
   own SQL with new dates was rejected: swapping dates inside SQL text is fragile, and it would have
   to be checked again. The candidate chose this over re-asking the agent for the new period, which
   would keep the prose but cost one model call per run.
-- **Where it runs.** `/figures` runs in the agent container, which already reaches the
+- **The comparison shows SQL on purpose**, because the faulty join is a SQL mistake. Two fixed
+  queries run through the same read-only gateway the model uses. The rule side must
+  equal `calc.totals` for every month, or the page shows an error instead of figures.
+- **Where it runs.** `/figures` and `/compare` run in the agent container, which already reaches the
   db and holds `calc`. Saved reports live in the api's `history.sqlite` with the users, filtered by
   user like chats; saving the same answer again returns the same report. The api never reaches the
-  db directly, and no new container was needed: the inputs are months, never free text or
-  SQL.
-- **The page** draws the report with the existing chart code (`chartView`), fed the computed rows as
+  db directly, and no new container was needed: the inputs are months and fixed names, never free
+  text or SQL.
+- **The page** draws both views with the existing chart code (`chartView`), fed the computed rows as
   if they were a query result.
 
 **Rejected.** A separate "figures" container (more to run for no real isolation gain, see above).
