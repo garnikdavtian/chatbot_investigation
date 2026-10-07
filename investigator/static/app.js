@@ -256,7 +256,7 @@ function botMsg(run) {
     run.answer ? h("button", {type: "button", class: "ghost", onclick: e => copyAnswer(e.currentTarget, run.answer)}, icon("copy", "sm"), h("span", {}, "Copy answer")) : null,
     h("button", {type: "button", class: "ghost", title: "Re-run the recorded model responses: same SQL, results and checks, no API call",
       onclick: () => replay(run.run_id, replayOut)}, icon("replay", "sm"), "Replay"),
-    h("a", {class: "ghost", href: `/api/runs/${run.run_id}/report.md`}, icon("download", "sm"), "Export .md"),
+    h("button", {type: "button", class: "ghost", onclick: () => exportMd(run.run_id, replayOut)}, icon("download", "sm"), "Export .md"),
     replayOut));
   return h("article", {class: "bot", id: `run-${run.run_id}`, "aria-label": "Answer"}, parts);
 }
@@ -506,6 +506,18 @@ async function replay(id, out) {
     const r = await api(`/api/runs/${id}/replay`, {});
     out.textContent = r.diffs.length ? `Replay differs: ${r.diffs.join("; ")}` : `Reproduced: same queries, results and checks (${r.status}), no API call.`;
   } catch (e) { out.textContent = `Replay failed: ${e.message}`; }
+}
+
+// A link cannot send the key header, so fetch the file and save it from memory.
+async function exportMd(id, out) {
+  try {
+    const r = await fetch(`/api/runs/${id}/report.md`, {headers: headers()});
+    signedOut(r);
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    const a = h("a", {href: URL.createObjectURL(await r.blob()), download: `${id}.md`});
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (e) { out.textContent = `Export failed: ${e.message}`; }
 }
 
 // ---- the message shown while the model works, fed by the streamed progress
