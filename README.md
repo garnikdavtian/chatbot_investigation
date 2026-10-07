@@ -7,6 +7,8 @@ SQL, looks at the results, asks a follow-up query, and writes a report. **Code t
 number in the report** against the query result it cites and against the business rules. A wrong
 number never reaches the user as "verified".
 
+**Reviewers: start with the [walkthrough](docs/walkthrough.md)** (5-minute read: approach, findings, checks).
+
 <img src="docs/ui-chart.png" alt="Chat view: past chats on the left; a verified answer with a bar chart of gross, refunds and net by month, and findings with their checked figures" width="760">
 
 ## Quick start
@@ -197,6 +199,6 @@ data/           starter pack, additions, build script, database, answer key
 runs/           saved live runs (JSON record + Markdown report)
 evals/          model evaluation script and results
 tests/          66 tests, none needs an API key
-docs/           architecture diagram, decisions, LLM usage note, screenshots
+docs/           walkthrough, architecture diagram, decisions, LLM usage note, screenshots
 ai-workflow/    the AI setup used to build this: README.md, manifest.json, settings, hooks
 ```
