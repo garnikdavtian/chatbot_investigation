@@ -10,7 +10,10 @@ the reasoning: see Known limitations.)
 
 **Reviewers: start with the [walkthrough](docs/walkthrough.md)** (5-minute read: approach, findings, checks).
 
-<img src="docs/ui-chart.png" alt="Chat view: past chats on the left; a verified answer with a bar chart of gross, refunds and net by month, and findings with their checked figures" width="760">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/ui-chart-dark.png">
+  <img src="docs/ui-chart.png" alt="Chat view: past chats on the left; a verified answer with a bar chart of gross, refunds and net by month (October marked partial), and findings with their checked figures" width="760">
+</picture>
 
 ## Quick start
 
@@ -88,7 +91,8 @@ The **Inspector** button (top right of the page) opens a small panel with this g
 runs, it highlights the node the agent is in and counts each tool call as it starts. For a saved chat,
 it replays the last answer's path from the record.
 
-The **Tips** button next to it lists what you can ask, with one clickable example for each of the 8 chart
+The sun/moon button switches between light and dark themes (it follows the system setting until you pick one).
+The **Tips** button next to the Inspector lists what you can ask, with one clickable example for each of the 8 chart
 kinds (bar, ranked bars, stacked bars, line, area, waterfall, scatter, headline number). Each example was
 run live, 1 to 3 times, and came back verified every time except one of three ranked-bar runs.
 

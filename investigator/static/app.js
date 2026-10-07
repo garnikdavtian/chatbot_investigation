@@ -1,4 +1,7 @@
 "use strict";
+// Theme: the system setting until the user picks one with the theme button; the pick is kept in this browser.
+// Set before init() shows anything, so a saved pick does not flash the other theme.
+try { const t = localStorage.getItem("investigator-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* storage blocked */ }
 // Lucide icon geometry (ISC licence), drawn inline: no icon font, no CDN.
 const ICONS = {
   search: [["circle", {cx: 11, cy: 11, r: 8}], "m21 21-4.3-4.3"],
@@ -25,6 +28,9 @@ const ICONS = {
   message: ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"],
   ban: [["circle", {cx: 12, cy: 12, r: 10}], "m4.9 4.9 14.2 14.2"],
   info: [["circle", {cx: 12, cy: 12, r: 10}], "M12 16v-4", "M12 8h.01"],
+  sun: [["circle", {cx: 12, cy: 12, r: 4}], "M12 2v2", "M12 20v2", "m4.93 4.93 1.41 1.41", "m17.66 17.66 1.41 1.41", "M2 12h2", "M20 12h2",
+    "m6.34 17.66-1.41 1.41", "m19.07 4.93-1.41 1.41"],
+  moon: ["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"],
   waterfall: ["M3 3v16a2 2 0 0 0 2 2h16", "M7 17V8", "M11 8v3", "M15 11v3", "M19 14v3"],
   activity: ["M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"],
 };
@@ -323,8 +329,9 @@ function chartView(run, foot = null) {
   const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
   const compact = v => (v < 0 ? "-" : "") + (c.unit === "cents" ? "$" : "") +
     (Math.abs(v) / (c.unit === "cents" ? 100 : 1)).toLocaleString("en-US", {notation: "compact", maximumFractionDigits: 1});
+  const monthly = xs.length > 1 && xs.every(x => /^\d{4}-\d{2}-01$/.test(x));  // month starts written as dates
   const fmtX = x => {
-    let m = /^(\d{4})-(\d{2})$/.exec(x);
+    let m = (monthly ? /^(\d{4})-(\d{2})-01$/ : /^(\d{4})-(\d{2})$/).exec(x);
     if (m) return month(+m[1], +m[2]);
     m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(x);
     return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])).toLocaleString("en", {month: "short", day: "numeric", timeZone: "UTC"}) : x;
@@ -792,7 +799,23 @@ async function ask(question) {
 
 function grow() { const q = $("q"); q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 200) + "px"; }
 
+const DARK = matchMedia("(prefers-color-scheme: dark)");
+const isDark = () => (document.documentElement.dataset.theme || (DARK.matches ? "dark" : "light")) === "dark";
+function themeButton() {
+  const label = isDark() ? "Switch to light theme" : "Switch to dark theme";
+  $("theme").replaceChildren(icon(isDark() ? "sun" : "moon"));
+  $("theme").setAttribute("aria-label", label); $("theme").title = label;
+}
+
 async function init() {
+  themeButton();
+  DARK.addEventListener("change", themeButton);
+  $("theme").addEventListener("click", () => {
+    const t = isDark() ? "light" : "dark";
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("investigator-theme", t); } catch { /* storage blocked: this visit only */ }
+    themeButton();
+  });
   document.querySelectorAll("[data-icon]").forEach(el => el.replaceWith(icon(el.dataset.icon)));
   config = await api("/api/config");
 
