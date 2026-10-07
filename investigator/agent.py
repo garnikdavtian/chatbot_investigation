@@ -46,7 +46,7 @@ from investigator.verify import money_issues, verify
 
 DB = os.environ.get("DB_URL") or ROOT / "data" / "investigation.sqlite"  # a file, or the db container
 # versions are immutable: saved runs replay with their own
-PROMPTS = {"system": "prompts/system-v6.md", "guard": "prompts/guard-v1.md", "compact": "prompts/compact-v1.md"}
+PROMPTS = {"system": "prompts/system-v9.md", "guard": "prompts/guard-v1.md", "compact": "prompts/compact-v1.md"}
 MAX_QUERIES = 6
 MAX_CALLS = 8      # reason calls per question; the most seen in 113 eval runs of v4/v5 was 7
 MAX_REPAIRS = 1

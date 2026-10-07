@@ -28,7 +28,7 @@ class Finding(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["observed", "inferred", "unknown"] = Field(
         description="observed: shown by a query result; inferred: drawn from observed figures; "
-                    "unknown: the data cannot establish it")
+                    "unknown: the data cannot establish it; a why question always needs one, such as the reasons for refunds")
     statement: str = Field(description='one or two sentences; write money as "<integer> cents"')
     metrics: list[Metric] = Field(description="the figures this finding relies on")
 
@@ -36,11 +36,18 @@ class Finding(BaseModel):
 class Chart(BaseModel):
     """What to draw, not the numbers: the UI draws the rows of the cited query's executed result."""
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["bar", "line"] = Field(description="bar to compare categories or segments; line for a trend "
-                                                     "over three or more ordered periods")
+    kind: Literal["bar", "hbar", "stacked_bar", "line", "area", "waterfall", "scatter", "stat"] = Field(
+        description="pick by what the reader must see. bar: compare a few categories or periods. hbar: rank many "
+                    "items, e.g. customers, sorted in the query. stacked_bar: parts of a whole per x, e.g. refunds by "
+                    "segment per month (non-negative values). line: a trend over 3 or more ordered points, e.g. "
+                    "weeks or days. area: one series' trend over 3 or more points, e.g. a running total. waterfall: "
+                    "a bridge from a start total to an end total: first row the start, middle rows the signed "
+                    "changes, last row the end, one y column; the rows must add up. scatter: two numeric measures "
+                    "per item, x and y both numeric columns. stat: one result row of 1 to 4 headline numbers")
     title: str
     query_id: str = Field(description="id of the successful query whose result rows the chart draws")
-    x: str = Field(description="result column for the x axis, e.g. a month or a segment")
+    x: str = Field(description="result column for the x axis, e.g. a month, a segment or a step label; for "
+                               "scatter a numeric column; for stat any column (used as the label)")
     y: list[str] = Field(description="1 to 4 numeric result columns, one series each")
     group: str | None = Field(description="optional result column whose values (at most 4) split rows into "
                                           "series, e.g. segment; then give exactly one y column. null otherwise")

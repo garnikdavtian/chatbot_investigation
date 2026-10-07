@@ -62,9 +62,12 @@
     "prompts_and_rules": {
       "status": "used",
       "files": [
-        "prompts/system-v6.md",
+        "prompts/system-v9.md",
         "prompts/guard-v1.md",
         "prompts/compact-v1.md",
+        "prompts/system-v8.md",
+        "prompts/system-v7.md",
+        "prompts/system-v6.md",
         "prompts/system-v5.md",
         "prompts/system-v4.md",
         "prompts/system-v3.md",
@@ -74,7 +77,7 @@
         "data/starter/schema.sql",
         "investigator/report.py"
       ],
-      "notes": "The system prompt is prompts/system-v6.md plus the domain.md rules (without the worked example) plus schema.sql. guard-v1 classifies each new message (allow / off_topic / unsafe); compact-v1 summarizes history beyond 20 messages. Prompt versions are immutable named snapshots; runs record their paths and one SHA over all three. report.py holds the report schema with field descriptions."
+      "notes": "The system prompt is prompts/system-v9.md plus the domain.md rules (without the worked example) plus schema.sql. guard-v1 classifies each new message (allow / off_topic / unsafe); compact-v1 summarizes history beyond 20 messages. Prompt versions are immutable named snapshots; runs record their paths and one SHA over all three. report.py holds the report schema with field descriptions; since v9 the Finding.kind description also carries the 'why needs an unknown finding' rule."
     },
     "tool_and_mcp_settings": {
       "status": "default",
@@ -162,9 +165,20 @@
       "redactions": []
     },
     {
+      "name": "Application system prompt v9",
+      "category": "prompts_and_rules",
+      "purpose": "v6 plus chart kinds (v7: bar, hbar, stacked_bar, line, area, waterfall, scatter, stat, chosen by the data's job), which figures can be checked (v8: per-week, per-customer and per-step values stay out of findings) and a reworded 'why' rule (v9); current version",
+      "original_path_or_scope": "prompts/system-v9.md",
+      "saved_path": "prompts/system-v9.md",
+      "version_or_commit": "prompt set sha 7844d9b38ab1 (with guard-v1 and compact-v1); v7 and v8 kept as measured snapshots",
+      "used_during": "evaluations v7, v8, v9",
+      "status": "used",
+      "redactions": []
+    },
+    {
       "name": "Application system prompt v6",
       "category": "prompts_and_rules",
-      "purpose": "v5 plus 'Reply or investigate' (greetings, help and already-answered questions get a plain reply) and 'Conversation' (query ids restart each question; a report cites only this question's queries); current version",
+      "purpose": "v5 plus 'Reply or investigate' (greetings, help and already-answered questions get a plain reply) and 'Conversation' (query ids restart each question; a report cites only this question's queries)",
       "original_path_or_scope": "prompts/system-v6.md",
       "saved_path": "prompts/system-v6.md",
       "version_or_commit": "prompt set sha 5370a2404abe (with guard-v1 and compact-v1)",
@@ -279,7 +293,7 @@
       "purpose": "Choose the model and measure prompt changes through the real pipeline",
       "original_path_or_scope": "evals/run_eval.py",
       "saved_path": "evals/results.json, evals/runs/",
-      "version_or_commit": "6 model/prompt combinations x 15 runs, plus gpt-6-luna v4 and v5 x 30 runs each (10 questions, 2 with injected instructions); gpt-6-luna v6 on the graph x 42 runs (10 data questions + 4 chat messages)",
+      "version_or_commit": "6 model/prompt combinations x 15 runs, plus gpt-6-luna v4 and v5 x 30 runs each (10 questions, 2 with injected instructions); gpt-6-luna v6 on the graph x 42 runs (10 data questions + 4 chat messages); v7, v8, v9 x 54 runs (plus 4 chart-form questions)",
       "used_during": "model and prompt selection",
       "status": "used",
       "redactions": []

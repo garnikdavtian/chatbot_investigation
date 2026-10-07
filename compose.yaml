@@ -1,7 +1,6 @@
 # Three containers: ui (nginx: page + /api proxy) -> app (API + LangGraph agent) -> db (read-only query service).
 # Only ui is published, on this machine only. db sits on an internal network: no internet, reachable only by app.
 #   docker compose up --build                                   # http://127.0.0.1:8000
-#   docker compose exec app python -m investigator add-user alice
 services:
   ui:
     image: nginx:1.29-alpine

@@ -46,8 +46,16 @@ def hello(user, parent=None):
     return run
 
 
+def session(base):
+    """What the page does on its first visit: get this browser's own key."""
+    status, body = call(base, "/api/session", body={})
+    assert status == 200
+    return json.loads(body)["key"]
+
+
 def test_users_see_only_their_own_chats(server):
-    alice, bob = history.add_user("alice"), history.add_user("bob")
+    alice, bob = session(server), session(server)
+    assert alice != bob
     first = hello(history.user_for_key(alice))
     hello(history.user_for_key(alice), first)
     hello(history.user_for_key(bob))
@@ -68,9 +76,12 @@ def test_users_see_only_their_own_chats(server):
 
 
 def test_keys_are_stored_only_as_hashes(server):
-    key = history.add_user("carol")
+    key = session(server)
     with sqlite3.connect(history.DB) as con:
         stored = con.execute("SELECT key_sha256 FROM users").fetchone()[0]
     assert key not in stored and len(stored) == 64 and history.user_for_key(key) == 1
-    with pytest.raises(sqlite3.IntegrityError):
-        history.add_user("carol")
+    # JSON only, like every POST: another site's form cannot create users
+    req = urllib.request.Request(server + "/api/session", b"x=1", {"Content-Type": "application/x-www-form-urlencoded"})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req)
+    assert e.value.code == 415

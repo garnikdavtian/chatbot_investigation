@@ -1,17 +1,18 @@
 """Web UI: one page, its script, and a small JSON API over the same agent the CLI uses.
 
-  uv run python -m investigator add-user <name>              # prints that user's app key once
   uv run --env-file .env python -m investigator serve        # then open http://127.0.0.1:8000
 
   GET  /api/config                 model, limits, and whether new questions can be asked (no key needed)
+  POST /api/session                {} -> {"key": "..."}: a new anonymous user (no key needed)
   GET  /api/runs                   your chats' messages, newest first
   GET  /api/runs/<id>              one saved run record
   GET  /api/runs/<id>/report.md    Markdown export
   POST /api/ask                    {"question": "...", "parent_run_id": null or "<id>"} -> NDJSON progress, then the run
   POST /api/runs/<id>/replay       re-run on the recorded responses -> {"status", "diffs"}
 
-Every /api call except config needs "Authorization: Bearer <app key>". Another user's run is a 404, so run
-ids reveal nothing. A header, not a cookie: another site cannot make the browser send it, so no CSRF.
+The page gets its key from /api/session on its first visit and keeps it, so nobody signs in. Every other /api
+call needs "Authorization: Bearer <app key>". Another user's run is a 404, so run ids reveal nothing. A header,
+not a cookie: another site cannot make the browser send it, so no CSRF.
 ponytail: stdlib http.server; FastAPI/uvicorn when it needs more than a few routes or many users.
 """
 import json
@@ -74,9 +75,6 @@ class Handler(BaseHTTPRequestHandler):
         path = self._path()
         if path is None:
             return
-        user = self._user()
-        if user is None:
-            return
         # JSON only: a cross-site form cannot send it without a CORS preflight, which this server never allows
         if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
             return self._json(415, {"error": "send application/json"})
@@ -89,6 +87,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "body is not valid JSON"})
         if not isinstance(body, dict):
             return self._json(400, {"error": "body must be a JSON object"})
+        if path == ["api", "session"]:
+            # ponytail: anyone who can reach the page can create users; add a per-IP limit if it is ever exposed
+            return self._json(200, {"key": history.add_user()})
+        user = self._user()
+        if user is None:
+            return
 
         if path == ["api", "ask"]:
             question = str(body.get("question") or "").strip()
@@ -163,8 +167,6 @@ def serve(port: int = 8000, host: str = "127.0.0.1") -> None:
     """host 0.0.0.0 is for a container only, published on the host's 127.0.0.1; the Host check still applies."""
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Data Investigator on http://127.0.0.1:{port} (Ctrl+C stops it)")
-    if not history.has_users():
-        print("No users yet: create one with  uv run python -m investigator add-user <name>")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

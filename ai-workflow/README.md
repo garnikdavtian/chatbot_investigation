@@ -43,8 +43,8 @@ and limits under `config`.
 
 | What | Path in this repository | Original location |
 |---|---|---|
-| Application prompts, current | `prompts/system-v6.md`, `prompts/guard-v1.md`, `prompts/compact-v1.md` | same |
-| Earlier system prompt versions | `prompts/system-v1.md` to `system-v5.md` | same; versions are immutable, and saved runs name the ones they used |
+| Application prompts, current | `prompts/system-v9.md`, `prompts/guard-v1.md`, `prompts/compact-v1.md` | same |
+| Earlier system prompt versions | `prompts/system-v1.md` to `system-v8.md` | same; versions are immutable, and saved runs name the ones they used |
 | Business rules and schema, appended to the prompt | `data/starter/domain.md`, `data/starter/schema.sql` | starter pack, unchanged |
 | Tool definitions and report schema | `investigator/agent.py` (`RUN_SQL`, `SUBMIT`), `investigator/report.py` (`Report`) | same |
 | Environment variable names | [`../.env.example`](../.env.example) | same |
@@ -122,10 +122,9 @@ evaluation gained 4 chat cases so this cannot regress unseen.
 
 ```bash
 uv sync
-uv run pytest                              # 58 tests, scripted and replayed model responses
+uv run pytest                              # 59 tests, scripted and replayed model responses
 uv run python -m investigator check        # replay every saved real run in runs/
 uv run python -m evals.run_eval --rescore  # re-score the saved evaluation runs
-uv run python -m investigator add-user me  # prints an app key for the page
 uv run python -m investigator serve        # UI with your chats and replay, http://127.0.0.1:8000
 ```
 

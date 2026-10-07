@@ -114,9 +114,25 @@ message: a guard blocks off-topic ones, and the model may answer in plain text. 
 amount written as "10000-cent", which neither the money check nor the dollar rendering matched; the
 shared pattern now accepts it, with a test.
 
+**8. Chart kinds** (v6 → v9). The candidate's second manual test found only bar charts. Claude Code
+added seven forms, per-kind checks and prompt v7, and four evaluation cases (weekly plot, waterfall,
+customer ranking, headline numbers). The evaluation then showed two problems:
+
+- v7 passed 7 of 12 chart runs. In the misses, the verifier had rejected per-customer, per-week and
+  per-step amounts, because it only checks totals per period and segment. v8 tells the model which
+  figures can be checked: 10/12.
+- v7 also cost the main "why" question its `unknown` finding: 1/3, against v6's 3/3. A focused
+  re-run (6 trials each, not saved) gave v6 6/6 and v8 3/6. The model now wrote the limit into
+  `open_questions` instead. Rewording the prompt rule (v9) still gave 3/6, and removing either new
+  chart bullet gave 4/6, so no single sentence caused it. Adding the rule to the `Finding.kind`
+  schema description gave 5/6 in the focused run and 3/3 in the evaluation.
+
+v9 result: data 27/30 (v6 26/30), chart forms 11/12, chat 12/12, 0 false blocks. The schema
+change also applies to any re-run of older prompts, so the v6 row predates it.
+
 ## Checks of Claude Code's own output
 
-- 58 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
+- 59 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
   headless browser: the page and its chart render, and no violations are logged.
 - The UI was reviewed through headless-browser screenshots at desktop and phone width. This caught
   links that were invisible in dark mode and chart labels that shrank to unreadable on a phone; both

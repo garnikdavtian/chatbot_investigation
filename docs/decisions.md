@@ -193,7 +193,7 @@ again in code, because not every compatible provider enforces strict mode.
 
 The system prompt has three parts:
 
-- our instructions (`prompts/system-v6.md`);
+- our instructions (`prompts/system-v9.md`);
 - the rules from `domain.md`, without the worked example, which describes only the seed rows;
 - `schema.sql`.
 
@@ -245,23 +245,34 @@ checked when the database is built and again before every investigation. Details
 
 ## D10. Charts: the model chooses what to draw, code draws the executed rows
 
-When the question asks to visualize, the report carries an optional `chart`: kind (bar or line),
-title, the id of one successful query, its x column, 1 to 4 numeric y columns or one y column split
-by a `group` column, and the unit. The chart has no numbers of its own. The UI draws the rows that
-query actually returned, as inline SVG, and links to the result table.
+When the question asks to visualize, the report carries an optional `chart`: its kind, title, the
+id of one successful query, its x column, 1 to 4 numeric y columns or one y column split by a `group`
+column, and the unit. The chart has no numbers of its own. The UI draws the rows that query actually
+returned, as inline SVG, and links to the result table.
 
-`verify.py` checks that the chart can be drawn: the query exists and succeeded, the columns exist,
-the values are numbers, there are at most 4 series and at most 60 rows, and there is more than one
-value. A failure goes through the same single repair round as a wrong figure. The last rule exists
-because the model charted a single number every time it was asked to "visualize total net sales";
-a prompt sentence had not stopped it, a deterministic check did.
+**Kinds, chosen by what the reader must see** (the dataviz skill's form-first rule): `bar` to
+compare a few categories or periods, `hbar` to rank many items, `stacked_bar` for parts of a whole,
+`line` and `area` for trends, `waterfall` for how a total moved between periods, `scatter` for two
+measures per item, and `stat` tiles for one to four headline numbers. The first version had bar and
+line only; the candidate's manual test asked for more forms. No pie: with two segments it is the
+skill's listed anti-pattern, and a stacked bar or stat tiles say the same.
+
+`verify.py` checks that the chart can be drawn and fits its kind: the query exists and succeeded,
+the columns exist, the values are numbers, at most 4 series and 60 rows. Per kind: a one-row,
+one-value chart must be `stat` (the model charted a single number every time it was asked to
+"visualize total net sales"; a prompt sentence had not stopped it, a check did); a trend needs at
+least 3 points, so two months are a bar and a trend uses weeks; stacked parts cannot be negative;
+a waterfall's start plus its steps must equal its end; a scatter needs a numeric x. A failure goes
+through the same single repair round as a wrong figure.
 
 **Rejected.** Model-written chart data: it could differ from every executed query. A chart library
-or Vega-Lite spec: a dependency and a larger schema for two chart kinds. A chart on every answer:
-the user asks for one when they want it.
+or Vega-Lite spec: a dependency and a larger schema, for eight forms that are about 225 lines of SVG code.
+A chart on every answer: the user asks for one when they want it.
 
 **Ceiling.** Plotted values are not checked against the rules, only the figures are, and the caption
-says so. Old runs have no `chart` key, so they replay unchanged.
+says so. Weekly or per-customer values can be charted but not checked: the verifier knows totals per
+period and segment, and v8/v9 tell the model to keep finer values out of findings. Old runs have
+no `chart` kind outside bar and line, so they replay unchanged.
 
 ## D11. Prompt injection: limit what the model can do, then tell it what to ignore
 
@@ -382,13 +393,16 @@ answered a joke request with an investigation.
 **Ceiling.** A classifier can be argued with. A message that talks the guard into "allow" reaches
 `reason`, which has the same capability limits and checks as before.
 
-## D15. Users and history: per-user app keys, a separate SQLite file
+## D15. Users and history: an automatic key per browser, a separate SQLite file
 
 - **Separate database.** Chats live in `data/history.sqlite` (`HISTORY_DB` in Docker), written only
   by the app. The sales database stays read-only and in its own container.
-- **Keys.** `python -m investigator add-user <name>` prints a random key once
-  (`secrets.token_urlsafe(32)`) and stores only its SHA-256. The key is high-entropy, so a fast hash
-  without salt is enough.
+- **Keys, issued under the hood.** On its first visit the page calls `POST /api/session`, which
+  creates an anonymous user and returns a random key (`secrets.token_urlsafe(32)`); only its SHA-256
+  is stored. The key is high-entropy, so a fast hash without salt is enough. Nobody signs in or sees
+  a key. A first version had a sign-in form with keys from a CLI command; the candidate's manual test
+  rejected it, since the requirement was separation between users, not logins.
+- `/api/session` takes JSON only, like every POST, so another site's form cannot create users.
 - **Isolation.** Every `/api` call except `/api/config` needs `Authorization: Bearer <key>`. Every
   read filters by user, and another user's run is a 404 for open, export, replay or use as a
   follow-up parent, so run ids leak nothing. `tests/test_history.py` checks this over real HTTP.
@@ -397,8 +411,9 @@ answered a joke request with an investigation.
 - **Committed demo runs** stay files in `runs/`: the brief wants them in the repository, and
   `investigator check` replays them without a key.
 
-**Rejected.** Logins, roles, key expiry, rate limits: not needed for a demo with a few users; a key
-is revoked by deleting its row. Postgres for history: one app instance writes it, so a SQLite file on
+**Rejected.** Logins, roles, key expiry, rate limits on `/api/session`: not needed on 127.0.0.1. A
+user is a browser, so clearing site data starts a new history; logins are the upgrade when a person
+must see their chats from several devices. Postgres for history: one app instance writes it, so a SQLite file on
 a volume is enough until several replicas share it.
 
 ## D16. Three containers: ui, app, db

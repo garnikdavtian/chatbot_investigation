@@ -62,7 +62,7 @@ def money_issues(texts: list, ok_values: set) -> list:
 
 
 def _chart_issues(c: dict, by_id: dict) -> list:
-    """The chart draws the cited result's rows as they are, so check only that they can be drawn."""
+    """The chart draws the cited result's rows as they are, so check only that they can be drawn as that kind."""
     q = by_id.get(c["query_id"])
     if not q or q["error"] is not None or not q["rows"]:
         return [f"the chart cites {c['query_id']}, which has no result rows to draw"]
@@ -71,14 +71,32 @@ def _chart_issues(c: dict, by_id: dict) -> list:
         return [f"the chart names columns {missing} that are not in the result of {c['query_id']}"]
     if not 1 <= len(c["y"]) <= 4 or (c["group"] and len(c["y"]) != 1):
         return ["the chart needs 1 to 4 y columns, or exactly one y column with group"]
-    if c["group"] and len({row[q["columns"].index(c["group"])] for row in q["rows"]}) > 4:
+    col = lambda name: [row[q["columns"].index(name)] for row in q["rows"]]
+    groups = len(set(col(c["group"]))) if c["group"] else len(c["y"])  # series drawn
+    if groups > 4:
         return [f"the chart's group column {c['group']} has more than 4 values; a chart shows at most 4 series"]
-    ys = [q["columns"].index(col) for col in c["y"]]
-    if not all(isinstance(row[i], int | float) for row in q["rows"] for i in ys):
+    ys = [v for name in c["y"] for v in col(name)]
+    if not all(isinstance(v, int | float) for v in ys):
         return [f"the chart's y columns must be numbers in every row of {c['query_id']}"]
-    if len(q["rows"]) == 1 and len(c["y"]) == 1:
-        return [("the chart would draw a single value, which compares nothing: set chart to null and say in "
-                 "assumptions why a chart does not help")]
     if len(q["rows"]) > 60:
         return [f"the chart would draw {len(q['rows'])} rows; aggregate to at most 60"]
+    rows, kind = len(q["rows"]), c["kind"]
+    if kind == "stat":
+        return [] if rows == 1 and not c["group"] else ["a stat chart shows one result row of headline numbers"]
+    if rows == 1 and len(c["y"]) == 1:
+        return ['the chart would draw a single value, which compares nothing: use kind "stat" for headline numbers']
+    if kind in ("line", "area") and len(set(col(c["x"]))) < 3:
+        return [f"a {kind} chart needs 3 or more x values to show a trend; use bar, or finer periods such as weeks"]
+    if kind == "area" and groups != 1:
+        return ["an area chart draws one series; use line for several"]
+    if kind == "stacked_bar" and (groups < 2 or any(v < 0 for v in ys)):
+        return ["a stacked bar needs 2 or more series of non-negative values"]
+    if kind == "waterfall":
+        if c["group"] or len(c["y"]) != 1 or rows < 3:
+            return ["a waterfall needs one y column, no group, and 3 or more rows: start total, changes, end total"]
+        if ys[0] + sum(ys[1:-1]) != ys[-1]:
+            return ["the waterfall does not add up: the start total plus the changes must equal the end total"]
+    if kind == "scatter" and (not all(isinstance(v, int | float) for v in col(c["x"])) or rows < 3 or groups > 3
+                              or len(c["y"]) != 1):
+        return ["a scatter needs a numeric x column, one y column, 3 or more rows and at most 3 groups"]
     return []

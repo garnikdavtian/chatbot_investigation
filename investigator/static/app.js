@@ -24,7 +24,6 @@ const ICONS = {
   table: [["rect", {x: 3, y: 3, width: 18, height: 18, rx: 2}], "M3 9h18", "M3 15h18", "M12 3v18"],
   message: ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"],
   ban: [["circle", {cx: 12, cy: 12, r: 10}], "m4.9 4.9 14.2 14.2"],
-  logOut: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "m16 17 5-5-5-5", "M21 12H9"],
 };
 const SUGGESTIONS = [
   {icon: "trend", title: "Explain a change", text: "Why did net sales change between August and September 2026?"},
@@ -44,8 +43,9 @@ const METRICS = ["gross", "refunds", "net"];
 const $ = id => document.getElementById(id);
 // thread = {root, runs: [full run records]}. nav changes on every navigation, so a late reply cannot draw into another view.
 let config = {}, runs = [], thread = null, pending = null, notice = null, nav = 0, key = null;
-// The app key lives in this browser only; a header, not a cookie, so other sites cannot use it.
-try { key = localStorage.getItem("investigator-key"); } catch { /* storage blocked: sign in each visit */ }
+// This browser's app key: issued by the server on the first visit, never shown. A header, not a cookie,
+// so other sites cannot use it. Clearing site data starts a new, empty history.
+try { key = localStorage.getItem("investigator-key"); } catch { /* storage blocked: a new key each visit */ }
 function setKey(k) {
   key = k;
   try { if (k) localStorage.setItem("investigator-key", k); else localStorage.removeItem("investigator-key"); } catch { /* see above */ }
@@ -88,10 +88,16 @@ const when = iso => new Date(iso).toLocaleString("en", {month: "short", day: "nu
 const badge = status => h("span", {class: `badge s-${status}`, title: STATUS[status]?.note || ""}, icon(STATUS[status]?.icon || "alert", "sm"), STATUS[status]?.label || status);
 
 const headers = body => ({...(key ? {Authorization: `Bearer ${key}`} : {}), ...(body ? {"Content-Type": "application/json"} : {})});
-function signedOut(r) {  // a missing or revoked key: back to the sign-in screen
+async function ensureKey() {  // first visit: the server issues this browser its own key
+  if (key) return;
+  const r = await fetch("/api/session", {method: "POST", headers: headers(true), body: "{}"});
+  if (!r.ok) throw new Error(`Could not start a session (${r.status}).`);
+  setKey((await r.json()).key);
+}
+function signedOut(r) {  // the server no longer knows this key, e.g. its history was reset
   if (r.status !== 401) return;
-  setKey(null); runs = []; thread = null; pending = null; render();
-  throw new Error("Your app key was not accepted. Sign in again.");
+  setKey(null);
+  throw new Error("This browser's session is no longer recognized. Reload the page to start a new one.");
 }
 async function api(path, body) {
   const r = await fetch(path, body ? {method: "POST", headers: headers(true), body: JSON.stringify(body)} : {headers: headers()});
@@ -253,6 +259,21 @@ function botMsg(run) {
 }
 
 // The chart spec names a query and its columns; the marks are that query's executed rows.
+// Round axis ends and steps (0 / 50K / 100K), always including zero: money bars and lines start at zero.
+function niceScale(lo, hi) {
+  lo = Math.min(0, lo); hi = Math.max(0, hi);
+  const raw = (hi - lo) / 4 || 1, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+  return {lo: Math.floor(lo / step) * step, hi: Math.ceil(hi / step) * step || step, step};
+}
+// A bar from v0 to v1 (pixels) with 4px rounded corners at the data end only; horizontal when `across`.
+function barPath(across, pos, size, v0, v1) {
+  const d = v1 < v0 ? -1 : 1, r = Math.min(4, size / 2, Math.abs(v1 - v0));
+  return across
+    ? `M${v0},${pos}H${v1 - d * r}Q${v1},${pos} ${v1},${pos + r}V${pos + size - r}Q${v1},${pos + size} ${v1 - d * r},${pos + size}H${v0}Z`
+    : `M${pos},${v0}V${v1 - d * r}Q${pos},${v1} ${pos + r},${v1}H${pos + size - r}Q${pos + size},${v1} ${pos + size},${v1 - d * r}V${v0}Z`;
+}
+
 function chartView(run) {
   const c = run.report?.chart, q = c && run.queries.find(x => x.id === c.query_id);
   if (!q || q.error || !q.rows.length) return null;
@@ -261,82 +282,193 @@ function chartView(run) {
   const key = v => String(v ?? "NULL"), xs = [...new Set(q.rows.map(r => key(r[xi])))];
   const series = c.group
     ? [...new Set(q.rows.map(r => key(r[gi])))].map(g => ({name: g, at: new Map(q.rows.filter(r => key(r[gi]) === g).map(r => [key(r[xi]), r[yi[0]]]))}))
-    : c.y.map((name, k) => ({name: name.replace(/_cents$/, ""), at: new Map(q.rows.map(r => [key(r[xi]), r[yi[k]]]))}));
+    : c.y.map((name, k) => ({name: name.replace(/_cents$/, "").replace(/_/g, " "), at: new Map(q.rows.map(r => [key(r[xi]), r[yi[k]]]))}));
   const vals = series.flatMap(sr => [...sr.at.values()]);
   if (series.length > 4 || vals.some(v => typeof v !== "number")) return null;
   const fmt = v => c.unit === "cents" ? fmtCents(v) : v.toLocaleString("en-US");
+  const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
   const compact = v => (v < 0 ? "-" : "") + (c.unit === "cents" ? "$" : "") +
     (Math.abs(v) / (c.unit === "cents" ? 100 : 1)).toLocaleString("en-US", {notation: "compact", maximumFractionDigits: 1});
-  const fmtX = x => { const m = /^(\d{4})-(\d{2})$/.exec(x); return m ? month(+m[1], +m[2]) : x; };
+  const fmtX = x => {
+    let m = /^(\d{4})-(\d{2})$/.exec(x);
+    if (m) return month(+m[1], +m[2]);
+    m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(x);
+    return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])).toLocaleString("en", {month: "short", day: "numeric", timeZone: "UTC"}) : x;
+  };
   const color = k => `var(--c${k + 1})`;
-  const valuesAt = x => series.map(sr => `${sr.name} ${sr.at.has(x) ? fmt(sr.at.get(x)) : "none"}`).join(", ");
+  const last = xs.length - 1, isTotal = i => i === 0 || i === last;  // waterfall: first and last rows are totals
+  const wfColor = (i, v) => isTotal(i) ? "var(--wf-total)" : v < 0 ? "var(--wf-down)" : "var(--wf-up)";
+  const valuesAt = (x, i) => c.kind === "waterfall" ? `${isTotal(i) ? "total" : "change"} ${isTotal(i) ? fmt(series[0].at.get(x)) : signed(series[0].at.get(x))}`
+    : series.map(sr => `${sr.name} ${sr.at.has(x) ? fmt(sr.at.get(x)) : "none"}`).join(", ");
 
-  // Drawn at the plot's real width (and again when it changes), so text stays 12px from phone to desktop.
-  const tip = h("div", {class: "tip", "aria-hidden": "true"}), plot = h("div", {class: "plot"});
-  tip.hidden = true;
-  let drawnAt = 0;
-  new ResizeObserver(([entry]) => {
-    const width = Math.round(entry.contentRect.width);
-    if (width > 0 && Math.abs(width - drawnAt) > 4) { drawnAt = width; plot.replaceChildren(draw(width), tip); }
-  }).observe(plot);
-  function draw(W) {
-    const H = 240, L = 56, R = 8, T = 8, B = 28, pw = W - L - R, ph = H - T - B;
-    let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
-    const raw = (hi - lo) / 4 || 1, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
-    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
-    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step || step;
-    const y = v => T + (hi - v) / (hi - lo) * ph, bw = pw / xs.length, cx = i => L + bw * (i + .5);
-    const svg = s("svg", {viewBox: `0 0 ${W} ${H}`, role: "group", "aria-label": `${c.title}. ` + xs.map(x => `${fmtX(x)}: ${valuesAt(x)}`).join("; ")});
-    const hl = c.kind === "bar" ? s("rect", {class: "hl", y: T, width: bw, height: ph, rx: 6}) : s("line", {class: "cross", y1: T, y2: T + ph});
-    hl.style.visibility = "hidden";
-    svg.append(hl);
-    for (let k = 0, n = Math.round((hi - lo) / step); k <= n; k++) {
-      const v = lo + k * step;
-      svg.append(s("line", {class: Math.abs(v) < step / 1e6 ? "axis" : "grid", x1: L, x2: W - R, y1: y(v), y2: y(v)}),
-        s("text", {class: "tick", x: L - 8, y: y(v) + 4, "text-anchor": "end"}, compact(v)));
-    }
-    const every = Math.ceil(xs.length / Math.max(2, Math.floor(pw / 90)));  // skip labels rather than crowd them
-    xs.forEach((x, i) => { if (i % every === 0) svg.append(s("text", {class: "tick", x: cx(i), y: H - 6, "text-anchor": "middle"}, fmtX(x))); });
-    if (c.kind === "bar") {
-      const gw = Math.min(bw * .72, series.length * 44), w = (gw - 2 * (series.length - 1)) / series.length;  // 2px gap between bars
-      series.forEach((sr, k) => xs.forEach((x, i) => {
-        const v = sr.at.get(x);
-        if (v == null) return;
-        const x0 = cx(i) - gw / 2 + k * (w + 2), y0 = y(0), y1 = y(v), r = Math.min(4, w / 2, Math.abs(y0 - y1)), d = v < 0 ? -1 : 1;
-        svg.append(s("path", {style: `fill:${color(k)}`,  // anchored at zero, rounded at the data end
-          d: `M${x0},${y0}V${y1 + d * r}Q${x0},${y1} ${x0 + r},${y1}H${x0 + w - r}Q${x0 + w},${y1} ${x0 + w},${y1 + d * r}V${y0}Z`}));
-      }));
-    } else series.forEach((sr, k) => {
-      const pts = xs.map((x, i) => [i, sr.at.get(x)]).filter(([, v]) => v != null);
-      svg.append(s("polyline", {style: `stroke:${color(k)}`, fill: "none", "stroke-width": 2, "stroke-linejoin": "round",
-        points: pts.map(([i, v]) => `${cx(i)},${y(v)}`).join(" ")}));
-      for (const [i, v] of pts) svg.append(s("circle", {style: `fill:${color(k)};stroke:var(--panel)`, "stroke-width": 2, r: 4.5, cx: cx(i), cy: y(v)}));
-    });
-
-    const show = (i, px, py) => {
-      if (c.kind === "bar") hl.setAttribute("x", L + bw * i); else { hl.setAttribute("x1", cx(i)); hl.setAttribute("x2", cx(i)); }
-      hl.style.visibility = "visible";
-      tip.replaceChildren(h("strong", {style: "display:block;margin-bottom:2px"}, fmtX(xs[i])),
-        ...series.map((sr, k) => h("div", {}, h("span", {}, h("i", {style: `background:${color(k)}`}), sr.name), h("b", {}, sr.at.has(xs[i]) ? fmt(sr.at.get(xs[i])) : "—"))));
+  let body, legend = series.length > 1 && c.kind !== "scatter" ? series.map((sr, k) => [color(k), sr.name]) : [];
+  if (c.kind === "stat") {  // headline numbers: the number is the chart
+    body = h("div", {class: "stats"}, c.y.map((col, k) => h("div", {class: "stat"},
+      h("span", {class: "stat-label"}, series[k].name[0].toUpperCase() + series[k].name.slice(1)),
+      h("span", {class: "stat-value"}, fmt(q.rows[0][yi[k]])))));
+    legend = [];
+  } else {
+    if (c.kind === "waterfall") legend = [["var(--wf-total)", "start and end total"], ["var(--wf-up)", "increase"], ["var(--wf-down)", "decrease"]];
+    if (c.kind === "scatter" && c.group) legend = [...new Set(q.rows.map(r => key(r[gi])))].map((g, k) => [color(k), g]);
+    // Drawn at the plot's real width (and again when it changes), so text stays 12px from phone to desktop.
+    const tip = h("div", {class: "tip", "aria-hidden": "true"}), plot = h("div", {class: "plot"});
+    tip.hidden = true;
+    const place = (px, py) => {
       tip.hidden = false;
-      const width = plot.clientWidth;
-      tip.style.left = Math.max(0, px + 14 + tip.offsetWidth > width ? px - 14 - tip.offsetWidth : px + 14) + "px";
+      tip.style.left = Math.max(0, px + 14 + tip.offsetWidth > plot.clientWidth ? px - 14 - tip.offsetWidth : px + 14) + "px";
       tip.style.top = Math.max(0, py - tip.offsetHeight - 12) + "px";
     };
-    const hide = () => { tip.hidden = true; hl.style.visibility = "hidden"; };
-    xs.forEach((x, i) => {  // one hit area per x value: bigger than the marks, reachable by Tab
-      const hit = s("rect", {class: "hit", x: L + bw * i, y: 0, width: bw, height: H, tabindex: 0, rx: 6, role: "img", "aria-label": `${fmtX(x)}: ${valuesAt(x)}`});
-      hit.addEventListener("pointermove", e => { const b = plot.getBoundingClientRect(); show(i, e.clientX - b.left, e.clientY - b.top); });
-      hit.addEventListener("focus", () => { const scale = plot.clientWidth / W; show(i, cx(i) * scale, (T + ph / 3) * scale); });
-      hit.addEventListener("blur", hide);
-      svg.append(hit);
-    });
-    svg.addEventListener("pointerleave", hide);
-    return svg;
+    const tipRows = (title, rows) => tip.replaceChildren(h("strong", {style: "display:block;margin-bottom:2px"}, title),
+      ...rows.map(([swatch, name, value]) => h("div", {}, h("span", {}, swatch ? h("i", {style: `background:${swatch}`}) : null, name), h("b", {}, value))));
+    // One hit area per item, bigger than its mark and reachable by Tab; `mark` is the highlight to show.
+    const hit = (svg, attrs, label, mark, onShow) => {
+      const el = s("rect", {class: "hit", tabindex: 0, role: "img", "aria-label": label, rx: 6, ...attrs});
+      const show = (px, py) => { if (mark) mark.style.visibility = "visible"; onShow(); place(px, py); };
+      el.addEventListener("pointermove", e => { const b = plot.getBoundingClientRect(); show(e.clientX - b.left, e.clientY - b.top); });
+      el.addEventListener("focus", () => { const box = el.getBBox(), k = plot.clientWidth / svg.viewBox.baseVal.width; show((box.x + box.width / 2) * k, (box.y + box.height / 3) * k); });
+      el.addEventListener("blur", () => { tip.hidden = true; if (mark) mark.style.visibility = "hidden"; });
+      el.addEventListener("pointerleave", () => { tip.hidden = true; if (mark) mark.style.visibility = "hidden"; });
+      svg.append(el);
+    };
+    const frame = (W, H, summary) => s("svg", {viewBox: `0 0 ${W} ${H}`, style: `height:${H}px`, role: "group", "aria-label": `${c.title}. ${summary}`});
+    const summary = xs.map((x, i) => `${fmtX(x)}: ${valuesAt(x, i)}`).join("; ");
+
+    // Vertical value axis, one band per x value: bar, stacked_bar, line, area, waterfall.
+    function columns(W) {
+      const H = 240, L = 56, R = 8, T = 18, B = 28, pw = W - L - R, ph = H - T - B;
+      const stacks = xs.map(x => series.reduce((sum, sr) => sum + (sr.at.get(x) ?? 0), 0));
+      let acc = 0;  // waterfall: each change floats from the running total; the totals stand on zero
+      const steps = xs.map((x, i) => { const v = series[0].at.get(x) ?? 0, from = isTotal(i) ? 0 : acc; acc = isTotal(i) ? v : acc + v; return [from, from + v]; });
+      const domain = c.kind === "waterfall" ? steps.flat() : c.kind === "stacked_bar" ? stacks : vals;
+      const {lo, hi, step} = niceScale(Math.min(...domain), Math.max(...domain));
+      const y = v => T + (hi - v) / (hi - lo) * ph, bw = pw / xs.length, cx = i => L + bw * (i + .5);
+      const svg = frame(W, H, summary), band = c.kind === "line" || c.kind === "area";
+      for (let k = 0, n = Math.round((hi - lo) / step); k <= n; k++) {
+        const v = lo + k * step;
+        svg.append(s("line", {class: Math.abs(v) < step / 1e6 ? "axis" : "grid", x1: L, x2: W - R, y1: y(v), y2: y(v)}),
+          s("text", {class: "tick", x: L - 8, y: y(v) + 4, "text-anchor": "end"}, compact(v)));
+      }
+      const every = Math.ceil(xs.length / Math.max(2, Math.floor(pw / 90)));  // skip labels rather than crowd them
+      xs.forEach((x, i) => { if (i % every === 0) svg.append(s("text", {class: "tick", x: cx(i), y: H - 6, "text-anchor": "middle"}, fmtX(x))); });
+      if (c.kind === "bar") {
+        const gw = Math.min(bw * .72, series.length * 44), w = (gw - 2 * (series.length - 1)) / series.length;  // 2px gap between bars
+        series.forEach((sr, k) => xs.forEach((x, i) => {
+          const v = sr.at.get(x);
+          if (v != null) svg.append(s("path", {style: `fill:${color(k)}`, d: barPath(false, cx(i) - gw / 2 + k * (w + 2), w, y(0), y(v))}));
+        }));
+      } else if (c.kind === "stacked_bar") {
+        const w = Math.min(bw * .6, 44);
+        xs.forEach((x, i) => {
+          let base = 0;
+          const top = series.findLastIndex(sr => sr.at.get(x) > 0);
+          series.forEach((sr, k) => {
+            const v = sr.at.get(x) ?? 0;
+            if (v <= 0) return;
+            const y0 = y(base) - (base > 0 ? 2 : 0), y1 = y(base + v);  // 2px surface gap between segments
+            if (y0 - y1 > 0) svg.append(k === top ? s("path", {style: `fill:${color(k)}`, d: barPath(false, cx(i) - w / 2, w, y0, y1)})
+              : s("rect", {style: `fill:${color(k)}`, x: cx(i) - w / 2, y: y1, width: w, height: y0 - y1}));
+            base += v;
+          });
+        });
+      } else if (c.kind === "waterfall") {
+        const w = Math.min(bw * .6, 56);
+        steps.forEach(([from, to], i) => {
+          if (i < last) svg.append(s("line", {class: "conn", x1: cx(i) + w / 2, x2: cx(i + 1) - w / 2, y1: y(to), y2: y(to)}));
+          svg.append(s("path", {style: `fill:${wfColor(i, to - from)}`, d: barPath(false, cx(i) - w / 2, w, y(from), y(to))}));
+          const v = series[0].at.get(xs[i]) ?? 0;  // every step is labelled: the sign carries direction, not only colour
+          svg.append(s("text", {class: "val", x: cx(i), y: y(Math.max(from, to)) - 6, "text-anchor": "middle"}, isTotal(i) ? fmt(v) : signed(v)));
+        });
+      } else series.forEach((sr, k) => {  // line, area
+        const pts = xs.map((x, i) => [i, sr.at.get(x)]).filter(([, v]) => v != null);
+        const line = pts.map(([i, v]) => `${cx(i)},${y(v)}`).join(" ");
+        if (c.kind === "area" && pts.length) svg.append(s("polygon", {style: `fill:${color(k)}`, class: "wash",
+          points: `${cx(pts[0][0])},${y(0)} ${line} ${cx(pts.at(-1)[0])},${y(0)}`}));
+        svg.append(s("polyline", {style: `stroke:${color(k)}`, fill: "none", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", points: line}));
+        for (const [i, v] of pts) svg.append(s("circle", {style: `fill:${color(k)};stroke:var(--panel)`, "stroke-width": 2, r: 4.5, cx: cx(i), cy: y(v)}));
+      });
+      xs.forEach((x, i) => {
+        const mark = band ? s("line", {class: "cross", x1: cx(i), x2: cx(i), y1: T, y2: T + ph}) : s("rect", {class: "hl", x: L + bw * i, y: T, width: bw, height: ph, rx: 6});
+        mark.style.visibility = "hidden";
+        svg.insertBefore(mark, svg.firstChild);
+        hit(svg, {x: L + bw * i, y: 0, width: bw, height: H}, `${fmtX(x)}: ${valuesAt(x, i)}`, mark, () => tipRows(fmtX(x),
+          c.kind === "waterfall" ? [[wfColor(i, series[0].at.get(x)), isTotal(i) ? "total" : "change", isTotal(i) ? fmt(series[0].at.get(x)) : signed(series[0].at.get(x))],
+                                    ...(isTotal(i) ? [] : [[null, "running total", fmt(steps[i][1])]])]
+            : series.map((sr, k) => [color(k), sr.name, sr.at.has(x) ? fmt(sr.at.get(x)) : "—"])));
+      });
+      return svg;
+    }
+
+    // Horizontal bars, one row per x value in query order: rankings and long labels.
+    function rows(W) {
+      const n = series.length, bh = n === 1 ? 20 : 14, band = Math.max(32, n * (bh + 2) + 12);  // bars at most 24px thick
+      const T = 4, B = 24, H = T + xs.length * band + B;
+      const L = Math.min(160, 12 + 7 * Math.max(...xs.map(x => fmtX(x).length))), R = n === 1 ? 72 : 12, pw = W - L - R;
+      const {lo, hi, step} = niceScale(Math.min(...vals), Math.max(...vals));
+      const xv = v => L + (v - lo) / (hi - lo) * pw, svg = frame(W, H, summary);
+      for (let k = 0, m = Math.round((hi - lo) / step); k <= m; k++) {
+        const v = lo + k * step;
+        svg.append(s("line", {class: Math.abs(v) < step / 1e6 ? "axis" : "grid", x1: xv(v), x2: xv(v), y1: T, y2: H - B}),
+          s("text", {class: "tick", x: xv(v), y: H - 6, "text-anchor": "middle"}, compact(v)));
+      }
+      xs.forEach((x, i) => {
+        const top = T + band * i, gh = n * bh + 2 * (n - 1), mark = s("rect", {class: "hl", x: 0, y: top, width: W, height: band, rx: 6});
+        mark.style.visibility = "hidden";
+        svg.insertBefore(mark, svg.firstChild);
+        svg.append(s("text", {class: "tick", x: L - 8, y: top + band / 2 + 4, "text-anchor": "end"}, fmtX(x)));
+        series.forEach((sr, k) => {
+          const v = sr.at.get(x);
+          if (v == null) return;
+          svg.append(s("path", {style: `fill:${color(k)}`, d: barPath(true, top + (band - gh) / 2 + k * (bh + 2), bh, xv(0), xv(v))}));
+          if (n === 1) svg.append(s("text", {class: "val", x: xv(v) + (v < 0 ? -6 : 6), y: top + band / 2 + 4, "text-anchor": v < 0 ? "end" : "start"}, compact(v)));
+        });
+        hit(svg, {x: 0, y: top, width: W, height: band}, `${fmtX(x)}: ${valuesAt(x, i)}`, mark,
+          () => tipRows(fmtX(x), series.map((sr, k) => [color(k), sr.name, sr.at.has(x) ? fmt(sr.at.get(x)) : "—"])));
+      });
+      return svg;
+    }
+
+    // Two numeric measures per row; the tooltip shows the whole row, so the item's name is there too.
+    function dots(W) {
+      const H = 280, L = 56, R = 12, T = 12, B = 40, pw = W - L - R, ph = H - T - B;
+      const groups = c.group ? [...new Set(q.rows.map(r => key(r[gi])))] : [null];
+      const sx = niceScale(Math.min(...q.rows.map(r => r[xi])), Math.max(...q.rows.map(r => r[xi]))), sy = niceScale(Math.min(...vals), Math.max(...vals));
+      const px = v => L + (v - sx.lo) / (sx.hi - sx.lo) * pw, py = v => T + (sy.hi - v) / (sy.hi - sy.lo) * ph;
+      const svg = frame(W, H, `${q.rows.length} points`);
+      for (let k = 0, m = Math.round((sy.hi - sy.lo) / sy.step); k <= m; k++) {
+        const v = sy.lo + k * sy.step;
+        svg.append(s("line", {class: Math.abs(v) < sy.step / 1e6 ? "axis" : "grid", x1: L, x2: W - R, y1: py(v), y2: py(v)}),
+          s("text", {class: "tick", x: L - 8, y: py(v) + 4, "text-anchor": "end"}, compact(v)));
+      }
+      for (let k = 0, m = Math.round((sx.hi - sx.lo) / sx.step); k <= m; k++) {
+        const v = sx.lo + k * sx.step;
+        svg.append(s("line", {class: Math.abs(v) < sx.step / 1e6 ? "axis" : "grid", x1: px(v), x2: px(v), y1: T, y2: T + ph}),
+          s("text", {class: "tick", x: px(v), y: T + ph + 18, "text-anchor": "middle"}, compact(v)));
+      }
+      svg.append(s("text", {class: "tick", x: L + pw / 2, y: H - 2, "text-anchor": "middle"}, `${c.x.replace(/_cents$/, "").replace(/_/g, " ")} →`),
+        s("text", {class: "tick", x: L, y: T - 2}, `↑ ${series[0].name}`));
+      const describe = r => q.columns.map((col, j) => [col.replace(/_cents$/, "").replace(/_/g, " "), typeof r[j] === "number" && [xi, ...yi].includes(j) ? fmt(r[j]) : String(r[j])]);
+      q.rows.forEach(r => {
+        const k = c.group ? groups.indexOf(key(r[gi])) : 0, cxv = px(r[xi]), cyv = py(r[yi[0]]);
+        const mark = s("circle", {class: "ring", cx: cxv, cy: cyv, r: 8});
+        mark.style.visibility = "hidden";
+        svg.append(mark, s("circle", {style: `fill:${color(k)};stroke:var(--panel)`, "stroke-width": 2, r: 5, cx: cxv, cy: cyv}));
+        hit(svg, {x: cxv - 12, y: cyv - 12, width: 24, height: 24}, describe(r).map(p => p.join(" ")).join(", "), mark,
+          () => tipRows(String(r.find((v, j) => typeof v === "string" && j !== gi) ?? ""), describe(r).map(([name, v]) => [null, name, v])));
+      });
+      return svg;
+    }
+
+    const draw = {hbar: rows, scatter: dots}[c.kind] || columns;
+    let drawnAt = 0;
+    new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      if (width > 0 && Math.abs(width - drawnAt) > 4) { drawnAt = width; plot.replaceChildren(draw(width), tip); }
+    }).observe(plot);
+    body = plot;
   }
 
   const data = h("div", {hidden: true, style: "margin-top:10px"}, resultTable(q.columns, q.rows,
-    (v, col) => c.unit === "cents" && c.y.includes(col) && typeof v === "number" ? fmtCents(v) : v));
+    (v, col) => c.unit === "cents" && (c.y.includes(col) || (c.kind === "scatter" && col === c.x)) && typeof v === "number" ? fmtCents(v) : v));
   const label = h("span", {}, "Show data");
   const toggle = h("button", {type: "button", class: "ghost", "aria-expanded": "false", onclick: () => {
     data.hidden = !data.hidden; toggle.setAttribute("aria-expanded", String(!data.hidden));
@@ -344,8 +476,8 @@ function chartView(run) {
   }}, icon("table", "sm"), label);
   return h("section", {class: "card chart", "aria-label": "Chart"},
     h("p", {class: "chart-title"}, c.title),
-    series.length > 1 ? h("div", {class: "legend"}, series.map((sr, k) => h("span", {}, h("i", {style: `background:${color(k)}`}), sr.name))) : null,
-    plot,
+    legend.length ? h("div", {class: "legend"}, legend.map(([swatch, name]) => h("span", {}, h("i", {style: `background:${swatch}`}), name))) : null,
+    body,
     h("div", {class: "chart-foot"}, h("span", {class: "caption", style: "margin:0"}, "Drawn from the rows of ", queryButton(run, c.query_id),
       " as returned. The chart's values are not rule-checked; the checked figures are."), toggle),
     data);
@@ -400,28 +532,9 @@ function emptyView() {
       h("span", {class: "si"}, icon(sg.icon)), h("span", {}, h("strong", {}, sg.title), h("span", {class: "d"}, sg.text))))),
     config.live ? null : h("p", {style: "margin-top:20px;font-size:14px"}, "No API key is set, so new questions are off. Open a saved chat on the left, or set LLM_API_KEY in .env."));
 }
-function signInView() {
-  const input = h("input", {id: "key", class: "keyin", type: "password", autocomplete: "current-password", required: true, "aria-describedby": "key-help"});
-  return h("form", {class: "hello", onsubmit: e => { e.preventDefault(); setKey(input.value.trim()); start(); }},
-    h("div", {class: "logo"}, icon("shield")), h("h2", {}, "Sign in"),
-    h("p", {id: "key-help"}, "Paste your app key. Each key sees only its own chats. To create one: ",
-      h("code", {}, "python -m investigator add-user <name>")),
-    h("label", {for: "key", class: "sr"}, "App key"),
-    h("div", {class: "keyrow"}, input, h("button", {type: "submit", class: "btn"}, "Sign in")),
-    notice ? h("p", {class: "fail", role: "alert"}, notice.error) : null);
-}
 function render() {
   const view = $("thread"), items = [];
   renderMode();
-  if (!key) {
-    view.classList.add("empty");
-    view.replaceChildren(signInView());
-    $("title").textContent = "Sign in";
-    $("q").disabled = $("composer").querySelector("button").disabled = true;
-    $("q").placeholder = "Sign in to ask";
-    renderList();
-    return $("key").focus();
-  }
   for (const r of thread?.runs || []) items.push(h("div", {class: "user", id: `ask-${r.run_id}`}, r.question), botMsg(r));
   if (pending?.nav === nav) items.push(h("div", {class: "user"}, pending.question),
     h("article", {class: "bot", id: "pending", "aria-busy": "true", "aria-live": "polite"}, pendingView()));
@@ -513,14 +626,11 @@ async function init() {
 }
 function renderMode() {
   $("mode").replaceChildren(h("span", {class: "dot" + (config.live ? "" : " off"), "aria-hidden": "true"}),
-    config.live ? `Live · ${config.model}` : "No API key · saved runs and replay",
-    ...(key ? [h("button", {type: "button", class: "ghost signout", onclick: () => { setKey(null); notice = null; start(); }},
-      icon("logOut", "sm"), "Sign out")] : []));
+    config.live ? `Live · ${config.model}` : "No API key · saved runs and replay");
 }
 async function start() {
   notice = null; thread = null; runs = [];
-  if (!key) return render();
-  try { runs = await api("/api/runs"); } catch (e) { notice = {nav, question: "", error: e.message}; return render(); }
+  try { await ensureKey(); runs = await api("/api/runs"); } catch (e) { notice = {nav, question: "", error: e.message}; return render(); }
   await route();
 }
 window.addEventListener("popstate", route);  // back/forward, including hash changes

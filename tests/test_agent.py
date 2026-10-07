@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from investigator import agent, report
 from investigator.agent import REFUSAL, chat, force, replay
 from investigator.llm import LLMError, Scripted
+from investigator.verify import _chart_issues
 
 AUG, SEP, OCT = "2026-08-01", "2026-09-01", "2026-10-01"
 MONTHLY = """WITH g AS (SELECT substr(order_date, 1, 7) AS month, sum(amount_cents) AS gross FROM orders GROUP BY month),
@@ -155,7 +156,7 @@ def test_old_messages_are_summarized_and_removed(db, monkeypatch):
 def test_chart_is_checked_against_the_cited_result(db):
     def charted(**chart):
         return submit(fig("net", AUG, SEP, 191500, "q1"), fig("net", SEP, OCT, 183000, "q1"),
-                      chart={"kind": "line", "title": "Net by month", "query_id": "q1", "x": "month",
+                      chart={"kind": "bar", "title": "Net by month", "query_id": "q1", "x": "month",
                              "y": ["net"], "group": None, "unit": "cents", **chart})
     run = chat("Plot net sales by month", scripted(sql(MONTHLY), sql(SEGMENT_REFUNDS), charted()), db_path=db)
     assert run["status"] == "verified" and run["report"]["chart"]["y"] == ["net"]
@@ -169,6 +170,31 @@ def test_chart_is_checked_against_the_cited_result(db):
     one_bar = charted(query_id="q2", x="segment", y=["refunds"])
     run = chat("q", scripted(sql(MONTHLY), sql(SEGMENT_REFUNDS + " DESC LIMIT 1"), one_bar, GOOD), db_path=db)
     assert "single value" in run["repairs"][0]["verification"]["issues"][0] and run["status"] == "verified"
+
+
+def test_each_chart_kind_checks_its_own_shape():
+    def issues(kind, columns, rows, y, x=None, group=None):
+        chart = {"kind": kind, "title": "t", "query_id": "q1", "x": x or columns[0], "y": y, "group": group,
+                 "unit": "cents"}
+        return _chart_issues(chart, {"q1": {"error": None, "columns": columns, "rows": rows}})
+    weeks = [["2026-08-03", 9000], ["2026-08-10", 7000], ["2026-08-17", 8000]]
+    bridge = [["Aug net", 191500], ["gross change", 10000], ["refund change", -18500], ["Sep net", 183000]]
+    by_segment = [["2026-08", "small", 2500], ["2026-08", "large", 0], ["2026-09", "small", 16000],
+                  ["2026-09", "large", 5000]]
+    per_customer = [["C1", 30000, 0], ["C2", 20000, 3000], ["C3", 7000, 7000]]
+    assert issues("line", ["week", "net"], weeks, ["net"]) == []
+    assert issues("area", ["week", "net"], weeks, ["net"]) == []
+    assert issues("waterfall", ["step", "net"], bridge, ["net"]) == []
+    assert issues("stacked_bar", ["month", "segment", "refunds"], by_segment, ["refunds"], group="segment") == []
+    assert issues("hbar", ["customer", "gross", "refunds"], per_customer, ["gross"]) == []
+    assert issues("scatter", ["customer", "gross", "refunds"], per_customer, ["refunds"], x="gross") == []
+    assert issues("stat", ["net"], [[183000]], ["net"]) == []
+    assert "3 or more x values" in issues("line", ["week", "net"], weeks[:2], ["net"])[0]
+    assert "add up" in issues("waterfall", ["step", "net"], bridge[:3] + [["Sep net", 190000]], ["net"])[0]
+    assert "non-negative" in issues("stacked_bar", ["step", "net"], bridge, ["net"])[0]
+    assert "numeric x" in issues("scatter", ["customer", "gross", "refunds"], per_customer, ["refunds"])[0]
+    assert '"stat"' in issues("bar", ["net"], [[183000]], ["net"])[0]
+    assert "one result row" in issues("stat", ["week", "net"], weeks, ["net"])[0]
 
 
 FAN_OUT = submit(fig("gross", SEP, OCT, 209000, "q1"), summary="Gross was 209000 cents.")

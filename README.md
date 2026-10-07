@@ -18,10 +18,9 @@ You need Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pytest                          # 58 tests, no API key
+uv run pytest                          # 59 tests, no API key
 uv run python -m investigator check    # replay every saved live run, no API key
-uv run python -m investigator add-user alice   # prints alice's app key once
-uv run --env-file .env python -m investigator serve   # http://127.0.0.1:8000, sign in with that key
+uv run --env-file .env python -m investigator serve   # http://127.0.0.1:8000
 ```
 
 To ask new questions, copy `.env.example` to `.env` and set `LLM_API_KEY`. The CLI asks without the
@@ -42,7 +41,6 @@ database exists only as its read-only mount.
 
 ```bash
 docker compose up --build                                      # http://127.0.0.1:8000
-docker compose exec app python -m investigator add-user alice
 ```
 
 `docker compose config` validates the file. The Docker daemon was not available on the build
@@ -56,15 +54,18 @@ Other commands:
 - Re-run the model evaluation (about $0.07): `uv run --env-file .env python -m evals.run_eval`.
 - Re-score the saved evaluation runs without a key: `uv run python -m evals.run_eval --rescore`.
 
-**The web page** is a chat. Sign in with your app key; each key sees only its own chats. The page
+**The web page** is a chat. Nobody signs in: on the first visit the server issues the browser its own
+key, which the page keeps and sends with every call, so each browser sees only its own chats. The page
 opens on an empty chat with four suggested questions, and the left panel lists past chats. The
 question box stays at the bottom (Enter sends, Shift+Enter adds a line), and a message in an open
 chat continues it. While the agent works, the page shows each step: the guard's check, then each
 query with its purpose and row count. Each answer shows, answer first:
 
 - the status, and if a check failed, the problems;
-- the answer: a plain reply, or a report with a chart when asked for one (bar or line; hover or Tab
-  for values, **Show data** for the table);
+- the answer: a plain reply, or a report with a chart when asked for one. The model picks the form
+  for the question: bar, horizontal bar (rankings), stacked bar (parts of a whole), line or area
+  (trends, by week), waterfall (how a total moved between periods), scatter (two measures per
+  customer) or headline-number tiles. Hover or Tab for values, **Show data** for the table;
 - findings labelled `observed`, `inferred` or `unknown`, with how many figures were checked and a
   link to the query behind them;
 - assumptions and open questions;
@@ -105,7 +106,7 @@ flowchart LR
 | `investigator/verify.py` | Checks each figure against its cited result and against `calc.py`, and checks money in the text. Issue texts never include expected values |
 | `investigator/calc.py` | `domain.md` in plain Python (the oracle), plus the data contract |
 | `investigator/llm.py` | The only model client: `ChatOpenAI` for any OpenAI-compatible API, and `Scripted` for replay and tests |
-| `investigator/history.py` | Users (hashed app keys) and their chats, in `data/history.sqlite`, apart from the sales data |
+| `investigator/history.py` | Anonymous users (hashed per-browser keys) and their chats, in `data/history.sqlite`, apart from the sales data |
 | `investigator/report.py` | Report schema (pydantic), run files, Markdown export |
 | `investigator/__main__.py`, `web.py`, `static/` | CLI and web UI over the same agent |
 
@@ -136,13 +137,13 @@ containers.
 | Capability | Writes, other tables, files, network: the only tool is one SELECT on three tables, enforced by SQLite | `gateway.py` |
 | Checks | Invented or wrong numbers: a figure counts only if it is a cell of the cited result and equals the rules; money in text must be a checked figure | `verify.py` |
 | Limits | Runaway loops: 6 queries, 8 model calls, 1 repair per question; a report needs a follow-up query | `agent.py` |
-| Prompt | Instructions hidden in the question, results or earlier answers are not followed, and are named | `prompts/system-v6.md` |
-| Users | One user reading another's chats: Bearer app key on every call, per-user queries, 404 for others' runs | `history.py`, `web.py` |
+| Prompt | Instructions hidden in the question, results or earlier answers are not followed, and are named | `prompts/system-v9.md` |
+| Users | One user reading another's chats: a per-browser key issued automatically and sent on every call, per-user queries, 404 for others' runs | `history.py`, `web.py` |
 | Page | Script injection and framing: text only, never HTML; CSP `script-src 'self'`; Host check | `static/app.js`, `web.py`, `docker/nginx.conf` |
 
 The guard is not a prompt-injection filter. An injected instruction about the data ("net sales equal
 gross sales") is allowed through on purpose, and the layers below make it harmless. Two evaluation
-questions carry such injections; v6 answered both under the business rules in 6 of 6 runs.
+questions carry such injections; v6 and v9 each answered both under the business rules in 6 of 6 runs.
 
 **Not covered.** Only the question is tested as an injection channel: this data has no free text.
 The explanation of *why* cannot be checked by code, so injected text could still steer it; the page
@@ -183,29 +184,37 @@ accepted report gives only the recorded totals.
 Each row is a fixed message set × 3 trials through the real pipeline (`evals/run_eval.py`): the same
 graph, checks and limits as the app. A data question passes when it ends verified, every figure it
 needs is present and checked `ok`, a "why" question has an `unknown` finding for what the data
-cannot explain, and a chart appears only where one is wanted. A chat message passes when it ends
+cannot explain, and a chart appears only where one is wanted, of a fitting kind where the question
+implies one (a weekly plot is a line or area, a bridge is a waterfall). A chat message passes when it ends
 `answered` ("hi", "What can you do?") or `blocked` (a joke, a coding request) with no query. Costs use
 list prices from 2026-10-06 without cache discounts. Model time is the sum of API latencies per run.
 
 | Model, reasoning `none` | Prompt | Data questions | Chat | False blocks | Cost / data question | Model time / data question |
 |---|---|---|---|---|---|---|
-| **gpt-6-luna** | **v6 (current), graph + guard** | **26/30** | **12/12** | **0** | **$0.0016** | **20.4 s** |
+| **gpt-6-luna** | **v9 (current), chart kinds** | **27/30** | **12/12** | **0** | **$0.0017** | **24.4 s** |
+| gpt-6-luna | v6, graph + guard | 26/30 | 12/12 | 0 | $0.0016 | 20.4 s |
 | gpt-6-luna | v5, v1 loop | 27/30 | not run | — | $0.0014 | 11.3 s |
 | gpt-6-luna | v4, v1 loop | 27/30 | not run | — | $0.0014 | 11.8 s |
 
 Older rounds ran 5 questions: gpt-6-luna v3 15/15, v2 12/15, v1 14/15; gpt-5.6-luna v1 14/15 and
 v2 12/15 at 2.5× the cost; gpt-6-sol v2 14/15 at 20× the cost (`evals/results.json`).
 
-**Choice: gpt-6-luna with reasoning effort `none` and prompt v6.** It is the cheapest model, and
-larger ones did not score higher. v6's 4 misses are the kinds v5 also had: a monthly chart without
-September net, and two one-number "visualize" answers that kept a one-bar chart. The fourth is a
-0-cent segment figure that no result cell shows. The extra model time is partly the guard (3–5 s per message); the
-rest was not isolated. Chat messages cost $0.0002 and take 2.4 s.
+**Choice: gpt-6-luna with reasoning effort `none` and prompt v9.** It is the cheapest model, and
+larger ones did not score higher. v9 also passed 11 of 12 runs of four chart-form questions (a
+weekly plot, a waterfall bridge, a customer ranking, headline numbers), against 7/12 for v7 and
+10/12 for v8; the miss quoted per-customer amounts in its text, which the verifier cannot check and
+rejected. v9's 3 data misses are a monthly chart without September net, a "why" answer without an
+`unknown` finding, and a segment answer with an unchecked amount in its text. Model time on the same
+10 data questions rose from 20.4 s (v6) to 24.4 s, including one 72.7 s run; the cause was not
+isolated. v6 had already added the guard (3–5 s per message) over v5. Chat messages cost $0.0002 and
+take 2.4 s.
 
 **Prompt history.** v2 fixed the SQL errors (9 → 0). v3 restored the `unknown` finding for "why"
 questions. v4 added charts and the partial-month rule. v5 added the injection paragraph (v4 had
 accepted "net sales equal gross sales" in 2 of 3 runs). v6 adds "reply or investigate" and the
-conversation rules. Details: [`docs/llm-usage.md`](docs/llm-usage.md).
+conversation rules. v7 adds the chart kinds; it cost the "why" answers their `unknown` finding
+(1/3), and v8 (which figures can be checked) did not bring it back. v9 states the rule in the
+`Finding` schema as well, where the model writes findings. Details: [`docs/llm-usage.md`](docs/llm-usage.md).
 
 **Limits of this evidence.** 30 to 42 runs per row on one small dataset are enough to choose a model
 and catch regressions here. They are not a general reliability estimate: a difference of 2 runs is
@@ -262,21 +271,24 @@ database is built and again before every question:
 - **What can be verified.** The verifier knows gross, refunds and net by period and segment. Other
   breakdowns, such as by customer or by order, can appear in query results and text, but not as
   checked figures. A 0-cent segment with no rows cannot be cited from a cell.
-- **Charts.** The verifier checks that a chart can be drawn, not its plotted values against the
-  rules; only the checked-figures table carries that guarantee, and the chart's caption says so.
+- **Charts.** The verifier checks that a chart fits its kind and can be drawn (a waterfall must add
+  up, a trend needs 3 points), not its plotted values against the rules; only the checked-figures
+  table carries that guarantee, and the chart's caption says so. Weekly and per-customer values
+  appear in charts but cannot be checked figures.
 - **Plain replies** can only repeat checked amounts, but their wording is not checked.
 - **The guard** adds 3–5 s per message and can be argued with (see Guardrails).
 - **Replay vs live.** Replay reproduces recorded responses; it does not re-evaluate the model. A new
   live run can differ, and the evaluation measures that variation.
 - **Recursive CTEs** are denied (the simplest safe rule), so the model lists periods explicitly.
-- **Users.** App keys without expiry, roles or rate limits; a key is revoked by deleting its row.
+- **Users.** A user is a browser: clearing its site data, or another browser, starts a new empty
+  history. Keys have no expiry, and creating them has no rate limit (fine on 127.0.0.1).
   History is one SQLite file written by one app instance.
 - **Docker** is validated by `docker compose config` and by running the db service outside Docker,
   but `docker compose up` has not been run (no daemon on the build machine).
 
 ## Time spent
 
-About 6.2 hours of active session time, measured from Claude Code session timestamps with pauses
+About 7.5 hours of active session time, measured from Claude Code session timestamps with pauses
 longer than 15 minutes removed:
 
 - v1, from 2026-10-05 19:47 UTC until the candidate's rewrite request on 2026-10-07 09:26 UTC: about
@@ -285,6 +297,9 @@ longer than 15 minutes removed:
 - The rewrite after the candidate's manual test, until 11:24 UTC: about 1.7 h. That covers the
   graph, guard, memory, users and history, the three containers, the re-recorded runs, the v6
   evaluation and these docs.
+- After the candidate's second manual test, until about 13:45 UTC: about 1.3 h. That covers the
+  automatic per-browser keys (the first version had a sign-in form), the chart kinds, prompts v7 to
+  v9 and their evaluations.
 
 That is within the 8-hour limit. It does not include reading and review outside the session.
 
@@ -292,7 +307,7 @@ That is within the 8-hour limit. It does not include reading and review outside 
 
 ```
 investigator/   application (modules above); static/ holds the page and app.js
-prompts/        system v1 to v6 (current), guard-v1, compact-v1; saved runs name the versions they used
+prompts/        system v1 to v9 (current), guard-v1, compact-v1; saved runs name the versions they used
 data/           starter pack (unchanged), additions, build script, database, hand-checked key
 runs/           saved live runs: JSON record + Markdown report
 evals/          model evaluation: script, results, saved runs, round-1 archive
