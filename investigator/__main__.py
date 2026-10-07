@@ -1,49 +1,83 @@
 """Command line for the investigator.
 
   uv run --env-file .env python -m investigator ask "Why did net sales change from August to September 2026?"
-  uv run --env-file .env python -m investigator ask "Which segment drove it?" --parent <run_id>
+  uv run --env-file .env python -m investigator ask "Which segment drove it?" --parent <run_id>   # same chat
   uv run python -m investigator replay <run_id>    # recorded responses, no API key
   uv run python -m investigator check              # replay every saved run, exit 1 on any difference
-  uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000
+  uv run python -m investigator add-user alice          # asks for a password; users log in on the page
+  uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000 (api + agent)
 """
 import argparse
+import getpass
+import sqlite3
 import sys
 
 from investigator import agent, report
-from investigator.llm import LiveLLM, LLMError
+from investigator.llm import LLMError, live_model
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="investigator", description="Bounded LLM investigation of the sales database.")
+    p = argparse.ArgumentParser(prog="investigator", description="Chat with a bounded agent over the sales database.")
     sub = p.add_subparsers(dest="cmd", required=True)
-    ask = sub.add_parser("ask", help="investigate a question with the live model")
+    ask = sub.add_parser("ask", help="ask the live model a question")
     ask.add_argument("question")
-    ask.add_argument("--parent", help="run id of the investigation this question follows up")
+    ask.add_argument("--parent", help="run id of the earlier message in the same chat")
     sub.add_parser("replay", help="replay one saved run without an API key").add_argument("run_id")
     sub.add_parser("check", help="replay every saved run; exit 1 if any result differs")
     serve = sub.add_parser("serve", help="web UI on 127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
+    agent_p = sub.add_parser("agent", help="serve the agent over HTTP (the agent container)")
+    agent_p.add_argument("--port", type=int, default=8002)
+    agent_p.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
+    sub.add_parser("add-user", help="create a user who can log in to the web UI").add_argument("name")
+    db = sub.add_parser("db", help="serve the read-only query tool over HTTP (the db container)")
+    db.add_argument("--port", type=int, default=8001)
+    db.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
     a = p.parse_args(argv)
 
     if a.cmd == "serve":
-        from investigator.web import serve
+        from investigator.api import serve
         serve(a.port, a.host)
+        return 0
+
+    if a.cmd == "agent":
+        from investigator import agent_service
+        print(f"agent service on port {a.port}, model {agent_service.config()['model']}")
+        agent_service.serve(a.port, a.host).serve_forever()
+        return 0
+
+    if a.cmd == "add-user":
+        from investigator import history
+        password = getpass.getpass(f"password for {a.name}: ")
+        if len(password) < 8 or password != getpass.getpass("again: "):
+            sys.exit("passwords must match and be at least 8 characters")
+        try:
+            history.add_user(a.name, password)
+        except sqlite3.IntegrityError:
+            sys.exit(f"a user named {a.name!r} already exists")
+        print(f"created {a.name}; they can log in on the web UI")
+        return 0
+
+    if a.cmd == "db":
+        from investigator import gateway
+        print(f"read-only query service for {agent.DB} on port {a.port}")
+        gateway.serve(agent.DB, a.port, a.host).serve_forever()
         return 0
 
     if a.cmd == "ask":
         parent = report.load(a.parent) if a.parent else None
         try:
-            llm = LiveLLM.from_env()
+            model = live_model()
         except LLMError as e:
             sys.exit(str(e))
-        run = agent.investigate(a.question, llm, parent=parent)
+        run = agent.chat(a.question, model, parent)
         path = report.save(run)
-        print(f"{run['status']}: " + (report.prose(run["report"]["summary"]) if run["report"] else run["error"]))
+        print(f"{run['status']}: " + report.prose(run["answer"] or run["error"]))
         for issue in (run["verification"] or {}).get("issues", []):
             print(f"  ! {report.prose(issue)}")
         print(f"saved {path.relative_to(report.ROOT)} and .md")
-        return 0 if run["status"] == "verified" else 1
+        return 0 if run["status"] in ("verified", "answered", "blocked") else 1
 
     runs = [report.load(a.run_id)] if a.cmd == "replay" else [report.load(f.stem) for f in sorted(report.RUNS.glob("*.json"))]
     differs = 0

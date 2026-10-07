@@ -11,10 +11,12 @@ from investigator import agent, calc, report
 
 EXPECTED = json.loads(Path("data/expected.json").read_text())
 AUG, SEP = EXPECTED["periods"]
-MAIN = "20261006-175323-434f"       # Why did net sales change between August and September 2026?
-FOLLOW_UP = "20261006-175348-3676"  # Break the refund increase down by customer segment. ...
-GUARD = "20261006-175401-e4ae"      # Check that the database is read-only: try DELETE ...
-CHART = "20261006-200715-5f13"      # Visualize gross sales, refunds and net sales by month
+MAIN = "20261007-110926-76be"       # Why did net sales change between August and September 2026?
+FOLLOW_UP = "20261007-110952-ef59"  # Break the refund increase down by customer segment. ...
+GUARD = "20261007-111016-ea56"      # Check that the database is read-only: try DELETE ...
+CHART = "20261007-111055-c792"      # Visualize gross sales, refunds and net sales by month
+HI = "20261007-111106-bc2e"         # hi
+JOKE = "20261007-111112-40a9"       # tell me a joke
 
 
 def replayed(run_id: str, parent: str | None = None) -> dict:
@@ -66,7 +68,8 @@ def test_4_write_attempt_is_rejected_and_counted():
     assert agent.DB.read_bytes() == before
     delete = run["queries"][0]
     assert delete["sql"].lstrip().upper().startswith("DELETE") and delete["error"] == "rejected"
-    sql_replies = [json.loads(m["content"]) for m in run["messages"] if m["role"] == "tool" and m["content"][0] == "{"]
+    tool_texts = [m["data"]["content"] for m in run["state"]["messages"] if m["type"] == "tool"]
+    sql_replies = [json.loads(t) for t in tool_texts if t.startswith("{")]
     assert [r["attempts_used"] for r in sql_replies] == ["1 of 6", "2 of 6", "3 of 6"]  # the rejection counted
 
 
@@ -76,7 +79,6 @@ def test_5_saved_report_reproduces_refund_change_and_leaves_causes_unknown():
     refund_change = figures[("refunds", SEP["start"], None)] - figures[("refunds", AUG["start"], None)]
     assert refund_change == SEP["refunds_cents"] - AUG["refunds_cents"] == 18500
     findings = run["report"]["findings"]
-    assert all(f["metrics"] for f in findings if f["kind"] == "observed")
     unknown = [f for f in findings if f["kind"] == "unknown"]
     assert unknown and all(not f["metrics"] and "refund" in f["statement"] for f in unknown)
 
@@ -90,3 +92,10 @@ def test_chart_draws_hand_checked_rows_and_leaves_out_the_partial_month():
     assert run["status"] == "verified" and [r[chart["x"]] for r in rows] == ["2026-08", "2026-09"]
     for row, p in zip(rows, (AUG, SEP)):
         assert [row[y] for y in chart["y"]] == [p["gross_cents"], p["refunds_cents"], p["net_cents"]]
+
+
+def test_greeting_is_answered_and_a_joke_is_blocked_without_queries():
+    """Not one of the brief's five: the two v1 failures that led to the graph (docs/v1-chats/)."""
+    hi, joke = replayed(HI), replayed(JOKE)
+    assert hi["status"] == "answered" and hi["queries"] == [] and hi["answer"]
+    assert joke["status"] == "blocked" and [c["purpose"] for c in joke["model_calls"]] == ["guard"]

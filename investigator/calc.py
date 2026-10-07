@@ -49,6 +49,26 @@ def by_segment(data: dict, start: str, end: str) -> dict:
     return {s: totals(data, start, end, s) for s in sorted({c["segment"] for c in data["customers"]})}
 
 
+def months(first: str, last: str, limit: int = 24) -> list[str]:
+    """Calendar months first..last inclusive, as YYYY-MM. ValueError on a bad month, a reversed or too long range."""
+    if not all(isinstance(m, str) and re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", m) for m in (first, last)) or first > last:
+        raise ValueError("months must be YYYY-MM, the first not after the last")
+    y, m = map(int, first.split("-"))
+    out = []
+    while f"{y:04d}-{m:02d}" <= last:
+        if len(out) == limit:
+            raise ValueError(f"at most {limit} months")
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+def month_bounds(month: str) -> tuple[str, str]:
+    """[first day, first day of the next month) for YYYY-MM: rule 2's half-open period."""
+    y, m = map(int, month.split("-"))
+    return f"{month}-01", f"{y + m // 12:04d}-{m % 12 + 1:02d}-01"
+
+
 def is_iso_day(s) -> bool:
     if not isinstance(s, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
         return False

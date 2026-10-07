@@ -1,10 +1,11 @@
 """Red-team the read-only SQL tool. Every attack must be rejected and leave the database byte-identical."""
 import hashlib
 import shutil
+import threading
 
 import pytest
 
-from investigator.gateway import run_sql
+from investigator.gateway import query, run_sql, serve, snapshot
 
 ATTACKS = [
     "DROP TABLE orders",
@@ -66,3 +67,19 @@ def test_bad_sql_is_reported_not_raised(db):
 
 def test_oversized_sql_rejected(db):
     assert run_sql(db, "SELECT 1" + " " * 5000).error == "rejected"
+
+
+def test_db_service_round_trip(db):
+    """The db container's HTTP service: same results and the same refusals as the local tool."""
+    srv = serve(db, port=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_port}"
+    try:
+        before = sha(db)
+        assert query(url, "SELECT count(*) FROM orders").rows == run_sql(db, "SELECT count(*) FROM orders").rows
+        assert query(url, "DELETE FROM refunds").error == "rejected" and sha(db) == before
+        assert snapshot(url) == snapshot(db)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert query(url, "SELECT 1").error == "unavailable"  # a dead service is an error result, not a crash

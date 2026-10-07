@@ -6,10 +6,22 @@ Read-only is enforced by the database itself, at three independent layers:
   3. an authorizer allows only SELECT on the three tables and a list of plain functions
      (recursive CTEs are denied too: they read a name that is not one of the tables).
 Plus a time limit, a row cap and an SQL length cap. Every outcome is a QueryResult, never an exception.
+
+With Docker the database lives in its own container, mounted read-only, on a network with no internet:
+`python -m investigator db` serves run_sql over HTTP, and the app sets DB_URL to reach it. query() and
+snapshot() take a file path or that URL, so the agent does not care where the database is.
 """
+import hashlib
+import json
 import sqlite3
 import time
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+from investigator import calc
 
 TABLES = {"customers", "orders", "refunds"}
 FUNCTIONS = {
@@ -84,3 +96,61 @@ def run_sql(db_path, sql: str, max_rows: int = MAX_ROWS, timeout_s: float = TIME
         con.close()
         result.elapsed_ms = round((time.monotonic() - started) * 1000)
     return result
+
+
+def _remote(db) -> bool:
+    return str(db).startswith(("http://", "https://"))
+
+
+def query(db, sql: str) -> QueryResult:
+    if not _remote(db):
+        return run_sql(db, sql)
+    req = urllib.request.Request(f"{db}/query", json.dumps({"sql": sql}).encode(), {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S + 5) as r:
+            return QueryResult(**json.load(r))
+    except (OSError, ValueError) as e:  # unreachable, timed out, or not a QueryResult: still counts as an attempt
+        return QueryResult(sql=sql, error="unavailable", message=f"the database service did not answer: {e}")
+
+
+def snapshot(db) -> tuple[str, dict]:
+    """The database's sha and all rows, for the data contract and the verifier.
+    ponytail: ships the three tables whole; compute calc.totals in the db service when the data grows."""
+    if _remote(db):
+        with urllib.request.urlopen(f"{db}/data", timeout=10) as r:
+            body = json.load(r)
+        return body["sha"], body["data"]
+    return hashlib.sha256(Path(db).read_bytes()).hexdigest()[:12], calc.load_db(db)
+
+
+def serve(db_path, port: int = 8001, host: str = "127.0.0.1") -> ThreadingHTTPServer:
+    """POST /query {"sql"} -> QueryResult; GET /data -> {"sha", "data"}. No auth: it is reachable only on the
+    compose network, and every query goes through run_sql on a read-only file."""
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/data":
+                return self._json(404, {"error": "not found"})
+            sha, data = snapshot(db_path)
+            self._json(200, {"sha": sha, "data": data})
+
+        def do_POST(self):
+            size = int(self.headers.get("Content-Length") or 0)
+            if self.path != "/query" or size > 4 * MAX_SQL_CHARS:
+                return self._json(404 if self.path != "/query" else 413, {"error": "POST /query {\"sql\": ...}"})
+            try:
+                sql = json.loads(self.rfile.read(size)).get("sql")
+            except (ValueError, AttributeError):
+                sql = None
+            if not isinstance(sql, str):
+                return self._json(400, {"error": "POST /query {\"sql\": ...}"})
+            self._json(200, run_sql(db_path, sql).to_dict())
+
+        def _json(self, code, data):
+            body = json.dumps(data).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    return ThreadingHTTPServer((host, port), Handler)
