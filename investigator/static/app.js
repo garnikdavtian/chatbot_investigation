@@ -45,7 +45,8 @@ const FIG = {query_error: "the query computed a wrong value", unsupported: "not 
 const METRICS = ["gross", "refunds", "net"];
 const $ = id => document.getElementById(id);
 // thread = {root, runs: [full run records]}. nav changes on every navigation, so a late reply cannot draw into another view.
-let config = {}, runs = [], thread = null, pending = null, notice = null, nav = 0, key = null, me = null;
+// page = {title, el}: a saved report, shown instead of a thread.
+let config = {}, runs = [], reports = [], page = null, thread = null, pending = null, notice = null, nav = 0, key = null, me = null;
 // The session token from login, sent as a header, not a cookie, so other sites cannot use it.
 try { key = localStorage.getItem("investigator-token"); me = localStorage.getItem("investigator-name"); } catch { /* storage blocked: log in each visit */ }
 function setKey(k, name = null) {
@@ -101,7 +102,7 @@ async function call(path, body) {
   return r;
 }
 function showLogin(message = "") {
-  runs = []; thread = null; pending = null; notice = null;
+  runs = []; reports = []; page = null; thread = null; pending = null; notice = null;
   $("app").hidden = true; $("login").hidden = false;
   $("login-error").textContent = message;
   $("name").focus();
@@ -175,7 +176,10 @@ function threads() {
 }
 function renderList() {
   const list = threads();
-  $("list").replaceChildren(...(list.length ? list.map(t => {
+  $("list").replaceChildren(...(reports.length ? [h("h2", {class: "label"}, "Saved reports"), ...reports.map(r =>
+    h("button", {type: "button", "aria-current": String(location.hash === `#report-${r.report_id}`), title: r.name, onclick: () => go(`report-${r.report_id}`)},
+      h("span", {class: "q"}, r.name), h("span", {class: "meta"}, icon("table", "sm"), `Report · ${when(r.created_at)}`)))] : []),
+    h("h2", {class: "label"}, "Recent"), ...(list.length ? list.map(t => {
     const first = t.items[0], last = t.items.at(-1), st = STATUS[last.status] || {};
     const more = t.items.length > 1 ? ` · ${t.items.length - 1} follow-up${t.items.length > 2 ? "s" : ""}` : "";
     return h("button", {type: "button", "aria-current": String(thread?.root === t.root), title: first.question, onclick: () => go(t.root)},
@@ -255,6 +259,7 @@ function findingsView(run) {
   })));
 }
 
+const figs = run => (run.verification?.figures || []).filter(f => f.status === "ok");
 function botMsg(run) {
   const rep = run.report, ver = run.verification || {}, st = STATUS[run.status] || {};
   const replayOut = h("span", {role: "status"});
@@ -278,6 +283,8 @@ function botMsg(run) {
     h("button", {type: "button", class: "ghost", title: "Re-run the recorded model responses: same SQL, results and checks, no API call",
       onclick: () => replay(run.run_id, replayOut)}, icon("replay", "sm"), "Replay"),
     h("button", {type: "button", class: "ghost", onclick: () => exportMd(run.run_id, replayOut)}, icon("download", "sm"), "Export .md"),
+    figs(run).length ? h("button", {type: "button", class: "ghost", title: "Save the checked figures as a report you can re-run for other months",
+      onclick: () => saveReport(run.run_id, replayOut)}, icon("table", "sm"), "Save as report") : null,
     replayOut));
   return h("article", {class: "bot", id: `run-${run.run_id}`, "aria-label": "Answer"}, parts);
 }
@@ -298,7 +305,7 @@ function barPath(across, pos, size, v0, v1) {
     : `M${pos},${v0}V${v1 - d * r}Q${pos},${v1} ${pos + r},${v1}H${pos + size - r}Q${pos + size},${v1} ${pos + size},${v1 - d * r}V${v0}Z`;
 }
 
-function chartView(run) {
+function chartView(run, foot = null) {
   const c = run.report?.chart, q = c && run.queries.find(x => x.id === c.query_id);
   if (!q || q.error || !q.rows.length) return null;
   const at = n => q.columns.indexOf(n), xi = at(c.x), gi = c.group ? at(c.group) : -1, yi = c.y.map(at);
@@ -502,8 +509,8 @@ function chartView(run) {
     h("p", {class: "chart-title"}, c.title),
     legend.length ? h("div", {class: "legend"}, legend.map(([swatch, name]) => h("span", {}, h("i", {style: `background:${swatch}`}), name))) : null,
     body,
-    h("div", {class: "chart-foot"}, h("span", {class: "caption", style: "margin:0"}, "Drawn from the rows of ", queryButton(run, c.query_id),
-      " as returned. The chart's values are not rule-checked; the checked figures are."), toggle),
+    h("div", {class: "chart-foot"}, h("span", {class: "caption", style: "margin:0"}, ...(foot ? [foot] : ["Drawn from the rows of ", queryButton(run, c.query_id),
+      " as returned. The chart's values are not rule-checked; the checked figures are."])), toggle),
     data);
 }
 
@@ -540,6 +547,52 @@ async function exportMd(id, out) {
   } catch (e) { out.textContent = `Export failed: ${e.message}`; }
 }
 
+// ---- saved reports: figures computed by code, no model
+const centsTable = (columns, rows) => resultTable(columns, rows, (v, col) => col.endsWith("_cents") && typeof v === "number" ? fmtCents(v) : v);
+const barChart = (title, columns, rows, y, foot) => chartView({run_id: "page", queries: [{id: "rows", columns, rows, error: null}],
+  report: {chart: {kind: "bar", query_id: "rows", x: "month", y, unit: "cents", title}}}, foot) || "";  // "": no chart, the table stays
+const failed = message => h("div", {class: "banner s-failed", role: "alert"}, icon("circleX"), h("div", {}, h("p", {}, message)));
+
+async function saveReport(id, out) {
+  try {
+    const {report_id} = await api("/api/reports", {run_id: id});
+    reports = await api("/api/reports");
+    go(`report-${report_id}`);
+  } catch (e) { out.textContent = `Save failed: ${e.message}`; }
+}
+function reportView(rep) {
+  const out = h("div", {class: "page"}), monthInput = (id, value) => h("input", {type: "month", id, value, required: true, pattern: "\\d{4}-\\d{2}", placeholder: "YYYY-MM"});
+  const from = monthInput("from", rep.spec.from_month), to = monthInput("to", rep.spec.to_month);
+  const run = async e => {
+    e?.preventDefault();
+    out.replaceChildren(h("p", {class: "caption"}, "Computing…"));
+    try {
+      const r = await api(`/api/reports/${rep.report_id}/run`, {from_month: from.value, to_month: to.value});
+      // A chart holds at most 4 series: beyond that, chart the all-customer figures and leave segments to the table.
+      const all = r.columns.slice(1), y = all.length <= 4 ? all : rep.spec.columns.filter(([seg]) => seg === "all").map(([, m]) => `${m}_cents`);
+      out.replaceChildren(barChart(all.length <= 4 ? rep.name : `${rep.name} (all customers; segments in the table)`, r.columns, r.rows, y,
+        "Computed by code from the business rules for each calendar month: no model, no model-written SQL."), centsTable(r.columns, r.rows));
+    } catch (err) { out.replaceChildren(failed(err.message)); }
+  };
+  run();
+  return h("div", {class: "page"},
+    h("p", {class: "caption", style: "margin:0"}, "The checked figures of ", h("a", {href: `#${rep.source_run_id}`}, "this answer"),
+      ", re-run for the months you pick. Months with no data show zero; a month with partial data is not marked."),
+    h("form", {class: "card tool", onsubmit: run}, h("label", {}, "From", from), h("label", {}, "To", to),
+      h("button", {type: "submit", class: "btn"}, icon("replay", "sm"), "Run")), out);
+}
+async function showPage(id) {
+  const token = ++nav;
+  thread = null;
+  try {
+    const rep = reports.find(r => `report-${r.report_id}` === id);
+    if (!rep) throw new Error("there is no such saved report");
+    const next = {title: rep.name, el: reportView(rep)};
+    if (token === nav) page = next;
+  } catch (e) { if (token === nav) notice = {nav, question: "", error: `Could not open this page: ${e.message}`}; }
+  if (token === nav) render();
+}
+
 // ---- the message shown while the model works, fed by the streamed progress
 function pendingView() {
   const p = pending.progress || {guard: null, queries: [], submitted: false, repairs: 0};
@@ -568,7 +621,7 @@ function emptyView() {
     config.live ? null : h("p", {style: "margin-top:20px;font-size:14px"}, "No API key is set, so new questions are off. Open a saved chat on the left, or set LLM_API_KEY in .env."));
 }
 function render() {
-  const view = $("thread"), items = [];
+  const view = $("thread"), items = page ? [page.el] : [];
   renderMode();
   for (const r of thread?.runs || []) items.push(h("div", {class: "user", id: `ask-${r.run_id}`}, r.question), botMsg(r));
   if (pending?.nav === nav) items.push(h("div", {class: "user"}, pending.question),
@@ -579,8 +632,9 @@ function render() {
         icon("replay", "sm"), "Try again") : null)));
   view.classList.toggle("empty", !items.length);
   view.replaceChildren(...(items.length ? items : [emptyView()]));
-  $("title").textContent = thread ? thread.runs[0].question : pending?.nav === nav ? pending.question : "New chat";
-  document.title = thread ? `${thread.runs[0].question} · Data Investigator` : "Data Investigator";
+  const title = page ? page.title : thread ? thread.runs[0].question : pending?.nav === nav ? pending.question : "New chat";
+  $("title").textContent = title;
+  document.title = page || thread ? `${title} · Data Investigator` : "Data Investigator";
   $("q").placeholder = !config.live ? "No API key: saved chats only" : thread ? "Ask a follow-up…" : "Ask why sales changed, or ask for a chart…";
   $("q").disabled = $("composer").querySelector("button").disabled = !config.live || !!pending;
   renderList();
@@ -599,7 +653,8 @@ function go(id) {
 }
 async function route() {
   const id = location.hash.slice(1);
-  notice = null;
+  notice = null; page = null;
+  if (id.startsWith("report-")) return showPage(id);
   if (!id) { nav++; thread = null; render(); $("q").focus(); return; }
   const root = rootOf(id), token = ++nav;
   const ids = runs.filter(r => rootOf(r.run_id) === root).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(r => r.run_id);
@@ -618,7 +673,7 @@ async function route() {
 async function ask(question) {
   if (pending || !config.live) return;
   const parent = thread ? thread.runs.at(-1).run_id : null, token = nav;
-  notice = null; pending = {question, t0: Date.now(), nav, progress: null};
+  notice = null; page = null; pending = {question, t0: Date.now(), nav, progress: null};
   $("q").value = ""; grow(); render(); toBottom();
   let run = null;
   try {
@@ -668,8 +723,8 @@ function renderMode() {
     h("span", {class: "who"}, me, h("button", {type: "button", onclick: logOut}, "Log out")));
 }
 async function start() {
-  notice = null; thread = null; runs = [];
-  try { runs = await api("/api/runs"); } catch (e) { notice = {nav, question: "", error: e.message}; return render(); }
+  notice = null; thread = null; page = null; runs = []; reports = [];
+  try { [runs, reports] = await Promise.all([api("/api/runs"), api("/api/reports")]); } catch (e) { notice = {nav, question: "", error: e.message}; return render(); }
   await route();
 }
 window.addEventListener("popstate", route);  // back/forward, including hash changes

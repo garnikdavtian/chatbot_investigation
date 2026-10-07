@@ -3,7 +3,7 @@
 Only the api container reads and writes it. An admin creates users (python -m investigator add-user <name>);
 passwords are stored as salted scrypt hashes, login tokens as sha256. A chat is a chain of runs linked by
 parent_run_id, and each run carries the conversation state the agent continues from. Every read filters by user,
-so one user cannot list, open or continue another user's chats. HISTORY_DB overrides the path.
+so one user cannot list, open or continue another user's chats or reports. HISTORY_DB overrides the path.
 ponytail: one api instance writes this file; move it to Postgres when several replicas must share it.
 """
 import hashlib
@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, user_id INTEGER NOT NU
                                  parent_run_id TEXT, created_at TEXT NOT NULL, question TEXT NOT NULL,
                                  status TEXT NOT NULL, record TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS runs_by_user ON runs (user_id, created_at);
+CREATE TABLE IF NOT EXISTS reports (report_id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users,
+                                    name TEXT NOT NULL, spec TEXT NOT NULL, source_run_id TEXT NOT NULL,
+                                    created_at TEXT NOT NULL, UNIQUE (user_id, source_run_id));
 """
 SCRYPT = {"n": 2**14, "r": 8, "p": 1}  # the hashlib defaults' safe setting: about 16 MB and 50 ms per hash
 
@@ -107,3 +110,30 @@ def list_runs(user_id: int) -> list[dict]:
         rows = con.execute(f"SELECT {', '.join(keys)} FROM runs WHERE user_id = ? ORDER BY created_at DESC, rowid DESC",
                            (user_id,)).fetchall()
     return [dict(zip(keys, row)) for row in rows]
+
+
+def save_report(user_id: int, name: str, spec: dict, source_run_id: str) -> int:
+    """A saved report is a spec (which figures, which default months), re-run by code: no SQL, no LLM."""
+    with _db() as con:  # saving the same answer again returns its report
+        con.execute("INSERT OR IGNORE INTO reports (user_id, name, spec, source_run_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, name, json.dumps(spec), source_run_id, _now()))
+        return con.execute("SELECT report_id FROM reports WHERE user_id = ? AND source_run_id = ?",
+                           (user_id, source_run_id)).fetchone()[0]
+
+
+REPORT = "SELECT report_id, name, spec, source_run_id, created_at FROM reports WHERE user_id = ?"
+
+
+def _report(row) -> dict:
+    return {"report_id": row[0], "name": row[1], "spec": json.loads(row[2]), "source_run_id": row[3], "created_at": row[4]}
+
+
+def list_reports(user_id: int) -> list[dict]:
+    with _db() as con:
+        return [_report(r) for r in con.execute(REPORT + " ORDER BY report_id DESC", (user_id,))]
+
+
+def load_report(report_id: int, user_id: int) -> dict | None:
+    with _db() as con:
+        row = con.execute(REPORT + " AND report_id = ?", (user_id, report_id)).fetchone()
+    return row and _report(row)

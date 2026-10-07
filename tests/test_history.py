@@ -3,6 +3,7 @@ chats, and a question goes through the agent service and is saved with its chat.
 import json
 import sqlite3
 import threading
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -93,3 +94,48 @@ def test_agent_unavailable_is_a_503(client, monkeypatch):
     r = client.post("/api/ask", headers=auth, json={"question": "hi"})
     assert r.status_code == 503 and "agent" in r.json()["error"]
     assert agent.MAX_QUERIES  # the agent module itself is untouched by the split
+
+
+EXPECTED = json.loads(Path("data/expected.json").read_text())
+
+
+def saved_answer(user_id, figures, run_id="r1"):
+    """A saved answer with checked figures, as the agent records it; no LLM needed."""
+    history.save({"run_id": run_id, "parent_run_id": None, "created_at": "2026-10-07T12:00:00+00:00",
+                  "question": "Why are sales down?", "status": "verified", "verification": {"figures": figures}}, user_id)
+    return run_id
+
+
+def figure(metric, start, end, segment=None, status="ok"):
+    return {"metric": metric, "period_start": start, "period_end_exclusive": end, "segment": segment, "status": status}
+
+
+def test_a_saved_report_reruns_its_checked_figures_for_any_months(client):
+    alice, bob = login(client, "alice"), login(client, "bob")
+    alice_id = history.user_for_token(alice["Authorization"].split()[1])["user_id"]
+    rid = saved_answer(alice_id, [figure("net", "2026-08-01", "2026-09-01"), figure("net", "2026-09-01", "2026-10-01"),
+                                  figure("refunds", "2026-09-01", "2026-10-01", "small"),
+                                  figure("gross", "2026-09-01", "2026-10-01", status="wrong")])  # not reused
+    report_id = client.post("/api/reports", headers=alice, json={"run_id": rid}).json()["report_id"]
+    assert client.post("/api/reports", headers=alice, json={"run_id": rid}).json()["report_id"] == report_id  # no duplicate
+    saved = client.get("/api/reports", headers=alice).json()
+    assert [(r["report_id"], r["source_run_id"]) for r in saved] == [(report_id, rid)]  # the page links back to the answer
+    assert client.get("/api/reports", headers=bob).json() == []
+
+    r = client.post(f"/api/reports/{report_id}/run", headers=alice, json={"from_month": "2026-08", "to_month": "2026-09"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["report"]["spec"] == {"columns": [["all", "net"], ["small", "refunds"]],
+                                      "from_month": "2026-08", "to_month": "2026-09"}
+    assert body["columns"] == ["month", "net_cents", "small_refunds_cents"]
+    p, seg = EXPECTED["periods"], EXPECTED["segments"]
+    assert body["rows"] == [["2026-08", p[0]["net_cents"], seg["2026-08-01"]["small"]["refunds_cents"]],
+                            ["2026-09", p[1]["net_cents"], seg["2026-09-01"]["small"]["refunds_cents"]]]
+
+    for months in ({"from_month": "2026-13", "to_month": "2026-13"}, {"from_month": "2026-09", "to_month": "2026-08"}):
+        assert client.post(f"/api/reports/{report_id}/run", headers=alice, json=months).status_code == 400
+    assert client.post(f"/api/reports/{report_id}/run", headers=bob, json={"from_month": "2026-08", "to_month": "2026-09"}).status_code == 404
+    assert client.post("/api/reports", headers=bob, json={"run_id": rid}).status_code == 404
+    unchecked = saved_answer(alice_id, [figure("net", "2026-08-01", "2026-09-01", status="wrong")], "r2")
+    assert client.post("/api/reports", headers=alice, json={"run_id": unchecked}).status_code == 400
+

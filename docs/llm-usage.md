@@ -143,7 +143,7 @@ confirmed the CSP; the test ran with the tool's CSP bypass.
 
 ## Checks of Claude Code's own output
 
-- 61 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
+- 62 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
   headless browser: the page and its chart render, and no violations are logged.
 - The UI was reviewed through headless-browser screenshots at desktop and phone width. This caught
   links that were invisible in dark mode and chart labels that shrank to unreadable on a phone; both

@@ -8,6 +8,9 @@
   GET  /api/runs/{id}/report.md     Markdown export
   POST /api/ask {question, parent_run_id}  NDJSON progress, then the run; the agent gets the chat's last run
   POST /api/runs/{id}/replay        the recorded responses re-run by the agent -> {"status", "diffs"}
+  POST /api/reports {run_id}        save an answer's checked figures as a report -> {"report_id"}
+  GET  /api/reports                 your saved reports
+  POST /api/reports/{id}/run {from_month, to_month}  the report's figures per month -> {"report", "columns", "rows"}
 
 Every other call needs "Authorization: Bearer <token>". Another user's run is a 404, so run ids reveal nothing.
 A header, not a cookie: another site cannot make the browser send it, so no CSRF. This container holds the
@@ -19,6 +22,7 @@ import queue
 import threading
 import urllib.error
 import urllib.request
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -29,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from investigator import history, report
+from investigator import calc, history, report
 
 STATIC = Path(__file__).parent / "static"
 AGENT_URL = os.environ.get("AGENT_URL") or "http://127.0.0.1:8002"
@@ -75,6 +79,20 @@ class Ask(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
     parent_run_id: str | None = None
+
+
+class SaveReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run_id: str
+
+
+class Months(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_month: str
+    to_month: str
+
+
+METRICS = ("gross", "refunds", "net")
 
 
 def current_user(authorization: str = Header("")) -> dict:
@@ -177,6 +195,42 @@ def replay(run_id: str, user: User):
     parent = saved_run(run["parent_run_id"], user) if run["parent_run_id"] else None
     with call_agent("/replay", {"run": run, "parent": parent}) as r:
         return json.load(r)
+
+
+@app.post("/api/reports")
+def save_report(body: SaveReport, user: User):
+    run = saved_run(body.run_id, user)
+    figs = [f for f in (run.get("verification") or {}).get("figures", []) if f["status"] == "ok"]
+    if not figs:
+        raise HTTPException(400, "this answer has no checked figures to reuse")
+    seen = {(f["segment"] or "all", f["metric"]) for f in figs}
+    last_day = max(date.fromisoformat(f["period_end_exclusive"]) for f in figs) - timedelta(days=1)
+    spec = {"columns": sorted(seen, key=lambda c: (c[0] != "all", c[0], METRICS.index(c[1]))),
+            "from_month": min(f["period_start"] for f in figs)[:7],
+            "to_month": last_day.isoformat()[:7]}
+    return {"report_id": history.save_report(user["user_id"], run["question"][:200], spec, run["run_id"])}
+
+
+@app.get("/api/reports")
+def reports(user: User):
+    return history.list_reports(user["user_id"])
+
+
+@app.post("/api/reports/{report_id}/run")
+def run_report(report_id: int, body: Months, user: User):
+    saved = history.load_report(report_id, user["user_id"])
+    if saved is None:
+        raise HTTPException(404, f"no saved report {report_id}")
+    try:
+        calc.months(body.from_month, body.to_month)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    with call_agent("/figures", body.model_dump(), timeout=30) as r:
+        months = json.load(r)["months"]
+    cols = saved["spec"]["columns"]
+    return {"report": saved,
+            "columns": ["month"] + [f"{metric}_cents" if seg == "all" else f"{seg}_{metric}_cents" for seg, metric in cols],
+            "rows": [[m["month"]] + [m.get(seg, {}).get(f"{metric}_cents", 0) for seg, metric in cols] for m in months]}
 
 
 def serve(port: int = 8000, host: str = "127.0.0.1") -> None:
