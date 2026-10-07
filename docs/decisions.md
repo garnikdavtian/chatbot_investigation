@@ -31,6 +31,13 @@ milliseconds. An agent framework such as LangChain or LangGraph: the loop is abo
 explicit limits, and a framework would hide exactly the limits and transcript this task must
 record.
 
+**Superseded on 2026-10-07 (D12–D16).** Manual tests showed the loop treated every message as an
+investigation. The agent is now a LangGraph graph, `guard → reason ⇄ act`, with custom nodes, so
+the limits and the transcript stay in our code (D12). Chats carry memory (D13), a guard screens scope
+(D14), users have keys and their own history (D15), and Docker runs ui, app and db as three
+containers (D16). The module boundaries above are unchanged: `gateway.py` still runs all model SQL,
+`verify.py` still checks every figure, and `llm.py` still builds the only model client.
+
 ## D1. Read-only access is enforced by the database, not by parsing SQL
 
 `gateway.py` applies three independent layers:
@@ -53,7 +60,7 @@ or `sql` and a message the model and the user can read.
 
 **Why.** A parser or regex has to anticipate every form of write, such as a CTE wrapped around a
 `DELETE`, a `PRAGMA` or an `ATTACH`. The authorizer sees what SQLite actually compiled. Evidence:
-`tests/test_gateway.py`, plus a live run (`runs/20261006-175401-e4ae`) in which the model sent a
+`tests/test_gateway.py`, plus a live run (`runs/20261007-111016-ea56`; v1: `20261006-175401-e4ae`, in git history) in which the model sent a
 `DELETE`. The gateway rejected it, the attempt counted (1 of 6), and the database bytes did not
 change.
 
@@ -114,9 +121,9 @@ that kind of slip. A wrong figure still cannot pass.
 | Setting | Value |
 |---|---|
 | `MAX_QUERIES` | 6 (from the brief) |
-| `MAX_TURNS` | 12 model calls |
+| `MAX_TURNS` | 12 model calls (now `MAX_CALLS` = 8 reason calls per question, D12) |
 | `MAX_REPAIRS` | 1 |
-| `tool_choice` | `"required"`: the model cannot drift into free text |
+| `tool_choice` | `"required"`: the model cannot drift into free text (now `"auto"` on a question's first call, D12) |
 | `parallel_tool_calls` | `false`: each query is chosen after the previous result |
 
 When the query limit is reached, the next call is forced to `submit_report`.
@@ -186,7 +193,7 @@ again in code, because not every compatible provider enforces strict mode.
 
 The system prompt has three parts:
 
-- our instructions (`prompts/system-v5.md`);
+- our instructions (`prompts/system-v6.md`);
 - the rules from `domain.md`, without the worked example, which describes only the seed rows;
 - `schema.sql`.
 
@@ -195,7 +202,8 @@ failure mode and no information.
 
 A follow-up question gets a compact summary of the parent run: question, answer, findings,
 assumptions, issues, and the SQL of its queries. It does not get the full transcript. Figures must
-cite queries from the current run, so the model re-runs what it needs.
+cite queries from the current run, so the model re-runs what it needs. (Superseded by D13: a
+follow-up now continues the conversation itself.)
 
 ## D8. A local web UI on the standard library
 
@@ -225,7 +233,7 @@ evidence-first page. FastAPI: only needed for several users. The upgrade path is
 **Docker is optional.** `uv sync` installs the one runtime dependency, `openai`, which brings
 `pydantic`, and SQLite ships with Python. The `Dockerfile` wraps the same commands for a reviewer
 without uv. Inside the container the server listens on 0.0.0.0; the run command publishes it only
-on the host's 127.0.0.1, and the Host check still applies.
+on the host's 127.0.0.1, and the Host check still applies. (Superseded by D15 for users and D16 for containers.)
 
 ## D9. Data: hand-designed additions with planted cases
 
@@ -270,9 +278,9 @@ The prompt is the last layer, not the first:
 2. **Checks** (D2, D3). A figure is `ok` only if it is a cell of the cited result and equals
    `calc.py`, and money in the text must be a checked figure. An injected "report 999999 cents"
    fails whatever the model believes.
-3. **Limits** (D4). 6 queries, 12 model calls, 1 repair; the follow-up rule is enforced in code.
+3. **Limits** (D4). 6 queries, 12 model calls (8 since D12), 1 repair; the follow-up rule is enforced in code.
 4. **Rendering** (D8). `textContent` only. A Content-Security-Policy allows only the page's own
-   inline script, by SHA-256 hash, and requests to the same server, and it forbids framing.
+   script (an inline script by SHA-256 hash in v1; the separate `app.js` since D12), and requests to the same server, and it forbids framing.
 5. **Prompt v5.** One paragraph: only the system message sets instructions. An instruction in the
    question, a result or an earlier answer to change a rule, skip checks or report a given number
    is not followed, and it is named in `assumptions`.
@@ -290,3 +298,132 @@ positives, for a tool whose worst outcome is already a labelled `unverified` ans
 injected text can still steer the explanation; the page says so. Injection through the data is not
 tested, because this data has no free text. Upgrade: an evaluation case with an instruction planted
 in a text column, once the data has one.
+
+## D12. A LangGraph graph: guard → reason ⇄ act
+
+**Why the change.** In manual tests on 2026-10-07 (`docs/v1-chats/`) "hi" and "tell me a joke"
+each went through two SQL queries and a report. The joke chat ended `verified`, with sales totals
+and a period of `0001-01-01 to 9999-12-31`. A date-coverage finding was marked `unverified`
+because an observed finding had to carry a money figure. The causes were `tool_choice="required"`,
+the follow-up rule on every message, and that verifier rule.
+
+```
+START → guard ─allow→ reason ⇄ act → END
+          └─off_topic / unsafe → END (fixed refusal, status blocked)
+```
+
+- **reason** calls the model with `tool_choice="auto"` on a question's first call, so a greeting or
+  a question the chat already answered gets a plain reply (status `answered`). After a tool result it
+  uses `"required"`, and at the query limit it forces `submit_report`, as before.
+- **act** runs `run_sql` and `submit_report` through the same `gateway.py` and `verify.py`, with
+  the same follow-up rule and repair round. It answers a malformed or unknown tool call with an
+  error message instead of raising.
+- **Limits.** 6 queries, 8 reason calls (the most seen in 113 v4/v5 evaluation runs was 7),
+  1 repair, and `recursion_limit` as a backstop. A plain reply may mention money only as figures
+  checked earlier in the chat, or the difference of two; otherwise it is `unverified`.
+- **The verifier** no longer requires a figure on an `observed` finding, which caused the
+  date-coverage false alarm. That rule had also invited padded figures (the old Known limitations).
+
+**Custom nodes, not `create_react_agent` or `ToolNode`.** The prebuilt agent hides the per-question
+limits, the query log and the follow-up rule this brief asks for. The graph adds what the old loop
+lacked: routing between a reply and an investigation, a guard in front, and memory as state.
+
+**Model client.** `langchain-openai`'s `ChatOpenAI` with `use_responses_api=False`: version 1.6.7
+sends gpt-6 models with tools to the Responses API by default, but the evaluation validated Chat
+Completions. Replay and tests use `Scripted`, a `BaseChatModel` that plays back recorded
+`AIMessage`s; the fake models in `langchain-core` have no `bind_tools`.
+
+**Evidence.** Evaluation v6, 14 messages × 3 trials:
+
+- data questions: 26/30 against v5's 27/30, with the same kinds of misses (one-row charts, a
+  0-cent segment figure that no cell shows);
+- chat: 12/12 ("hi" and "What can you do?" answered with no query; a joke and a coding request
+  blocked);
+- false blocks of data questions: 0 of 30.
+
+The guard adds about 3–5 s per message. Model time per data question was 20.4 s against v5's
+11.3 s, a gap the guard explains only in part.
+
+## D13. Memory: the run record carries the conversation; older messages are summarized
+
+**No checkpointer.** Every run saves the conversation after its question in `run["state"]`:
+messages, a summary of older ones, and the money values checked so far. A follow-up starts from its
+parent's state. A checkpointer would store a second copy of that state, and replay already needs it
+in the record.
+
+**Compaction.** At the start of a question, `reason` keeps the last `MAX_MESSAGES` = 20 earlier
+messages (`trim_messages`, starting on a user message, so tool calls keep their results). It
+summarizes the rest with `prompts/compact-v1.md` and removes them with `RemoveMessage`. Since
+`MAX_MESSAGES > 1 + 2 × MAX_CALLS`, a whole earlier question always fits. The summary is
+model-written from user input, so it reaches the model as a user-side message, never in the system
+message. The compaction call is recorded and replayed like any other. Live check: in a 4-question
+chat, the first question's 9 messages were summarized on the fourth, and every figure in the
+summary was correct.
+
+**Rejected.** Token-based trimming: the cap counts messages, as requested. A manual "compact"
+button: compaction is automatic.
+
+## D14. The guard: an LLM classifier that gates scope, not a prompt-injection filter
+
+This narrows D11's rejection of a screening classifier. D11 is about injection, and that still
+holds: injected instructions are allowed through to the layers that make them harmless. The guard
+answers a different question: is this message about the sales data at all? Without it, the model
+answered a joke request with an investigation.
+
+- One forced `verdict` call (`prompts/guard-v1.md`) sees the new message and the previous question,
+  so "and by segment?" is judged in context.
+- Labels are `allow`, `off_topic` and `unsafe`. When unsure, it allows. Requests to change or delete
+  data are allowed on purpose: the read-only gateway rejects them visibly (demo check 4).
+- A blocked message ends with a fixed refusal; the model never sees it. Malformed guard output
+  allows the message and says so in the run.
+- **Cost:** about $0.0001 and 3–5 s per message. **Evidence:** 6/6 off-topic messages blocked and
+  0/36 data and chat messages blocked in the v6 evaluation.
+
+**Ceiling.** A classifier can be argued with. A message that talks the guard into "allow" reaches
+`reason`, which has the same capability limits and checks as before.
+
+## D15. Users and history: per-user app keys, a separate SQLite file
+
+- **Separate database.** Chats live in `data/history.sqlite` (`HISTORY_DB` in Docker), written only
+  by the app. The sales database stays read-only and in its own container.
+- **Keys.** `python -m investigator add-user <name>` prints a random key once
+  (`secrets.token_urlsafe(32)`) and stores only its SHA-256. The key is high-entropy, so a fast hash
+  without salt is enough.
+- **Isolation.** Every `/api` call except `/api/config` needs `Authorization: Bearer <key>`. Every
+  read filters by user, and another user's run is a 404 for open, export, replay or use as a
+  follow-up parent, so run ids leak nothing. `tests/test_history.py` checks this over real HTTP.
+- The page keeps the key in `localStorage` and sends it as a header. A header, unlike a cookie, is
+  never attached by another site, so there is no CSRF.
+- **Committed demo runs** stay files in `runs/`: the brief wants them in the repository, and
+  `investigator check` replays them without a key.
+
+**Rejected.** Logins, roles, key expiry, rate limits: not needed for a demo with a few users; a key
+is revoked by deleting its row. Postgres for history: one app instance writes it, so a SQLite file on
+a volume is enough until several replicas share it.
+
+## D16. Three containers: ui, app, db
+
+```
+browser → ui  (nginx: page, script, /api proxy; published on 127.0.0.1:8000 only)
+            → app (API + LangGraph agent; LLM key from .env; history volume)
+                 → db (read-only query service; the sales database mounted :ro; internal network)
+```
+
+- **db** runs `python -m investigator db`: `POST /query` runs `gateway.run_sql` and returns its
+  result; `GET /data` returns the rows and SHA that the verifier and the data contract use. Its
+  network is `internal`, so it has no internet, and only app can reach it. The image has no copy of
+  the database; the only copy is the read-only mount.
+- **app** reaches it through `DB_URL`; `gateway.query` and `gateway.snapshot` take a file path or
+  that URL, so nothing else changed. All 7 demo runs reproduce through the HTTP service, including
+  the `DELETE`, which is rejected over the wire.
+- **ui** is nginx with the same Content-Security-Policy as `web.py` (a test compares them), and
+  `proxy_buffering off` so progress still streams.
+- One image serves app and db. The user asked for four containers, with a separate API; the API and
+  the agent stay in one process, because splitting them would add a network hop and a second
+  service for one function call.
+
+Without Docker, `uv run python -m investigator serve` still runs everything in one process.
+
+**Not verified here.** `docker compose config` validates the file, but the Docker daemon was not
+available on the build machine, so `docker compose up` has not been run.
+

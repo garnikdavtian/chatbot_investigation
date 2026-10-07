@@ -9,11 +9,9 @@ Issue texts go back to the model in the repair round, so they say what failed bu
 expected value: the model must fix its query, not copy the answer. Expected values stay in
 `figures`, for people.
 """
-import re
-
 from investigator import calc
+from investigator.report import CENTS
 
-CENTS = re.compile(r"(-?\d[\d,]*)\s*cents\b")
 WHY = {"query_error": "is in the cited result, but that query does not apply the metric rules for this metric, "
                       "period and segment",
        "unsupported": "is not in the result of the cited query",

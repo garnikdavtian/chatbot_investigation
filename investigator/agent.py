@@ -16,12 +16,12 @@ Status: verified | unverified (a check failed) | answered (plain reply, or a rep
 """
 import hashlib
 import json
+import os
 import secrets
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import zip_longest
-from pathlib import Path
 
 import openai
 from langchain_core.messages import (
@@ -44,7 +44,7 @@ from investigator.llm import LLMError, Scripted, describe
 from investigator.report import ROOT, Report
 from investigator.verify import money_issues, verify
 
-DB = ROOT / "data" / "investigation.sqlite"
+DB = os.environ.get("DB_URL") or ROOT / "data" / "investigation.sqlite"  # a file, or the db container
 # versions are immutable: saved runs replay with their own
 PROMPTS = {"system": "prompts/system-v6.md", "guard": "prompts/guard-v1.md", "compact": "prompts/compact-v1.md"}
 MAX_QUERIES = 6
@@ -106,7 +106,7 @@ class State(MessagesState):
 @dataclass
 class Ctx:
     model: object
-    db_path: Path
+    db: object  # file path or DB_URL
     data: dict
     prompts: dict  # name -> text
 
@@ -206,13 +206,13 @@ def chat(question: str, model, parent: dict | None = None, db_path=DB, prompts=P
         "status": None, "error": None, "answer": None,
         "config": {**describe(model), "prompts": dict(prompts),
                    "prompt_sha": sha("\n".join(texts[k] for k in sorted(texts)).encode()),
-                   "db_sha": sha(Path(db_path).read_bytes()), "max_queries": MAX_QUERIES, "max_calls": MAX_CALLS,
+                   "db_sha": None, "max_queries": MAX_QUERIES, "max_calls": MAX_CALLS,
                    "max_repairs": MAX_REPAIRS, "max_messages": MAX_MESSAGES, "max_rows": gateway.MAX_ROWS,
                    "timeout_s": gateway.TIMEOUT_S},
         "data_check": None, "guard": None, "compacted": 0, "report": None, "verification": None, "repairs": [],
         "limit_reached": False, "queries": [], "model_calls": [], "system_prompt": texts["system"], "state": prev,
     }
-    data = calc.load_db(db_path)
+    run["config"]["db_sha"], data = gateway.snapshot(db_path)
     run["data_check"] = calc.validate(data)
     if run["data_check"]["errors"]:
         return _end(run, "failed", "data contract violated: " + "; ".join(run["data_check"]["errors"]))
@@ -222,7 +222,7 @@ def chat(question: str, model, parent: dict | None = None, db_path=DB, prompts=P
              "report": None, "verification": None, "repairs": [], "limit_reached": False}
     try:
         for state in GRAPH.stream(start, {"recursion_limit": 2 * MAX_CALLS + 3}, stream_mode="values",
-                                  context=Ctx(model, Path(db_path), data, texts)):
+                                  context=Ctx(model, db_path, data, texts)):
             run |= {k: state[k] for k in RUN_KEYS}
             run["state"] = {"messages": messages_to_dict(state["messages"]), "summary": state["summary"],
                             "checked": state["checked"]}
@@ -266,13 +266,13 @@ def _handle(run: dict, tc: dict, ctx: Ctx, call: int) -> str:
     if not isinstance(tc["args"], dict):
         return "Error: tool arguments must be a JSON object. Nothing was run."
     if tc["name"] == "run_sql":
-        return _query(run, tc["args"], ctx.db_path, call)
+        return _query(run, tc["args"], ctx.db, call)
     if tc["name"] == "submit_report":
         return _submit(run, tc["args"], ctx.data)
     return f"Error: unknown tool {tc['name']!r}. Use run_sql or submit_report."
 
 
-def _query(run: dict, args: dict, db_path, call: int) -> str:
+def _query(run: dict, args: dict, db, call: int) -> str:
     sql = args.get("sql")
     if not isinstance(sql, str) or not sql.strip():
         return 'Error: run_sql needs {"purpose": "...", "sql": "SELECT ..."}. Nothing was run.'
@@ -280,7 +280,7 @@ def _query(run: dict, args: dict, db_path, call: int) -> str:
         run["limit_reached"] = True
         return (f"Not run: all {MAX_QUERIES} query attempts are used. Call submit_report with what you have "
                 "and put what is missing in open_questions.")
-    r = gateway.run_sql(db_path, sql)
+    r = gateway.query(db, sql)
     q = {"id": f"q{len(run['queries']) + 1}", "purpose": str(args.get("purpose", "")), "call": call, **r.to_dict()}
     run["queries"].append(q)
     out = {"query_id": q["id"], "attempts_used": f"{len(run['queries'])} of {MAX_QUERIES}"}

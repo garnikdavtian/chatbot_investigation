@@ -4,9 +4,11 @@
   uv run --env-file .env python -m investigator ask "Which segment drove it?" --parent <run_id>   # same chat
   uv run python -m investigator replay <run_id>    # recorded responses, no API key
   uv run python -m investigator check              # replay every saved run, exit 1 on any difference
+  uv run python -m investigator add-user alice     # a web user; prints their app key once
   uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000
 """
 import argparse
+import sqlite3
 import sys
 
 from investigator import agent, report
@@ -21,14 +23,33 @@ def main(argv=None) -> int:
     ask.add_argument("--parent", help="run id of the earlier message in the same chat")
     sub.add_parser("replay", help="replay one saved run without an API key").add_argument("run_id")
     sub.add_parser("check", help="replay every saved run; exit 1 if any result differs")
+    sub.add_parser("add-user", help="create a web user and print their app key once").add_argument("name")
     serve = sub.add_parser("serve", help="web UI on 127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
+    db = sub.add_parser("db", help="serve the read-only query tool over HTTP (the db container)")
+    db.add_argument("--port", type=int, default=8001)
+    db.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 only inside a container")
     a = p.parse_args(argv)
 
     if a.cmd == "serve":
         from investigator.web import serve
         serve(a.port, a.host)
+        return 0
+
+    if a.cmd == "db":
+        from investigator import gateway
+        print(f"read-only query service for {agent.DB} on port {a.port}")
+        gateway.serve(agent.DB, a.port, a.host).serve_forever()
+        return 0
+
+    if a.cmd == "add-user":
+        from investigator import history
+        try:
+            key = history.add_user(a.name)
+        except sqlite3.IntegrityError:
+            sys.exit(f"a user named {a.name!r} already exists")
+        print(f"App key for {a.name} (shown once; only its hash is stored):\n{key}")
         return 0
 
     if a.cmd == "ask":

@@ -1,0 +1,33 @@
+# Three containers: ui (nginx: page + /api proxy) -> app (API + LangGraph agent) -> db (read-only query service).
+# Only ui is published, on this machine only. db sits on an internal network: no internet, reachable only by app.
+#   docker compose up --build                                   # http://127.0.0.1:8000
+#   docker compose exec app python -m investigator add-user alice
+services:
+  ui:
+    image: nginx:1.29-alpine
+    ports: ["127.0.0.1:8000:80"]
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./investigator/static:/usr/share/nginx/html:ro
+    depends_on: [app]
+    networks: [front]
+  app:
+    build: .
+    command: ["python", "-m", "investigator", "serve", "--host", "0.0.0.0"]
+    env_file: [{path: .env, required: false}]  # LLM_* only; without it saved chats still open and replay
+    environment:
+      DB_URL: http://db:8001
+      HISTORY_DB: /history/history.sqlite
+    volumes: ["history:/history"]  # users and chats survive restarts and rebuilds
+    depends_on: [db]
+    networks: [front, back]
+  db:
+    build: .
+    command: ["python", "-m", "investigator", "db", "--host", "0.0.0.0"]
+    volumes: ["./data/investigation.sqlite:/app/data/investigation.sqlite:ro"]  # the only copy in the stack
+    networks: [back]
+networks:
+  front: {}
+  back: {internal: true}
+volumes:
+  history: {}

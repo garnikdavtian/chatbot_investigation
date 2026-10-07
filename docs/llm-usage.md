@@ -8,7 +8,7 @@
 | Development | ponytail plugin 4.10.0 for Claude Code (hooks) | Adds a "simplest working solution" ruleset to every session. See `ai-workflow/README.md` |
 | Development | Skills: `dataviz` (bundled with Claude Code) and the third-party `ui-ux-pro-max` (commit `477bcb2`, at the candidate's request) | Chart palette and its validator; the UI/UX audit of the chat page |
 | Development | Built-in Claude Code tools: shell, file edit, web fetch and search | uv, pytest, ruff (`uvx`), sqlite3, curl, headless Chromium for UI screenshots; provider docs, model lists and prices |
-| Application | OpenAI Chat Completions, **`gpt-6-luna`**, reasoning effort `none` | The investigating model. Chosen by evaluation (see the README) |
+| Application | OpenAI Chat Completions, **`gpt-6-luna`**, reasoning effort `none`, through `langchain-openai` 1.6.7 in a LangGraph 1.2.14 graph | The guard, the investigating model and conversation summaries. Chosen by evaluation (see the README) |
 | Evaluation only | `gpt-5.6-luna`, `gpt-6-sol` | Comparison and ceiling. `gpt-6.1-sol` was rejected: it needs the Responses API to use function tools with reasoning |
 
 ## What was generated
@@ -21,7 +21,8 @@ Claude Code generated everything outside `data/starter/`, which holds the starte
 - the prompts, the evaluation and the docs.
 
 The candidate set the direction, reviewed the work and made the product decisions: which assignment
-to take, a final UI without Streamlit, Docker only as an optional wrapper, and the review gates. Claude Code ran every check
+to take, a final UI without Streamlit, the review gates and, after testing v1 by hand, the move to a
+LangGraph agent with a guard, memory, per-user keys and three containers (correction 7). Claude Code ran every check
 listed below.
 
 ## One representative instruction and workflow
@@ -96,15 +97,35 @@ injection questions, and the page a hash-based CSP. Re-measured side by side on 
 questions, v4 accepted "net sales equal gross sales" in 2 of 3 runs, answering with gross sales;
 v5 answered under the rules in 6 of 6. Both scored 27/30 overall.
 
+**7. The candidate's manual test** (v1 → the graph, prompt v6). The candidate chatted with v1 by hand
+(`docs/v1-chats/`). 3 of 4 chats went wrong, in ways the evaluation could not see, because all of
+its questions were data questions:
+
+- "hi" and "tell me a joke" were each forced through 2 SQL queries and a report; the joke chat even
+  ended `verified`, with sales totals for `0001-01-01 to 9999-12-31`;
+- a date-coverage finding was marked `unverified` only because an observed finding had to carry a
+  money figure.
+
+The causes were in the design: every message was an investigation (`tool_choice="required"`, the
+follow-up rule, a figure on every observed finding). The rewrite (decisions D12–D16) routes each
+message: a guard blocks off-topic ones, and the model may answer in plain text. The evaluation gained
+4 chat cases. v6 result: chat 12/12, 0 false blocks of 30 data questions, data 26/30 against v5's
+27/30, with the same kinds of misses. While building it, the live 4-question memory check exposed an
+amount written as "10000-cent", which neither the money check nor the dollar rendering matched; the
+shared pattern now accepts it, with a test.
+
 ## Checks of Claude Code's own output
 
-- 47 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
+- 58 tests, `ruff`, and a replay of every saved run after each change. The CSP was checked in a
   headless browser: the page and its chart render, and no violations are logged.
 - The UI was reviewed through headless-browser screenshots at desktop and phone width. This caught
   links that were invisible in dark mode and chart labels that shrank to unreadable on a phone; both
   were fixed. The chart colours were checked with a colour-vision validator.
 - A new test failed on its first run because it parsed plain-text tool replies as JSON. The fix was
   in the test; the code under test was correct.
-- One quirk remains and is documented as a limitation in the README. In the live DELETE run, the rule
-  "an observed finding needs a figure" made the model attach an unrelated net-sales figure to the
-  finding "the DELETE was rejected".
+- In v1's live DELETE run, the rule "an observed finding needs a figure" made the model attach an
+  unrelated net-sales figure to the finding "the DELETE was rejected". The rule was removed with the
+  rewrite (D12).
+- After the rewrite, the sign-in screen was driven in headless Chromium: wrong key rejected, chat,
+  blocked message, investigation, sign out. This caught "gpt-6-lunanull" in the sidebar, where
+  `replaceChildren` printed a `null`; fixed.

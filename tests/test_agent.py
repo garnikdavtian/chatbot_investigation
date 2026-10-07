@@ -115,8 +115,9 @@ def test_plain_reply_may_repeat_only_checked_amounts(db):
     ok = chat("Remind me of September net?", scripted(AIMessage("It was 183000 cents, down 8500 cents.")),
               parent, db_path=db)
     assert ok["status"] == "answered"
-    made_up = chat("And October?", scripted(AIMessage("October was 99000 cents.")), parent, db_path=db)
+    made_up = chat("And October?", scripted(AIMessage("October was a 99000-cent month.")), parent, db_path=db)
     assert made_up["status"] == "unverified" and "99000" in made_up["verification"]["issues"][0]
+    assert report.prose(made_up["answer"]) == "October was a $990.00 month."
     fresh = chat("Net in September?", scripted(AIMessage("About 183000 cents.")), db_path=db)
     assert fresh["status"] == "unverified"  # nothing was checked in a new conversation
 

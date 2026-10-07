@@ -5,7 +5,7 @@
       "files": [
         "ai-workflow/claude-code/settings.json"
       ],
-      "notes": "Claude Code 2.1.284 with claude-opus-5-5 (settings model 'opus', effort high; max was also set during the session). Built-in tools only. uv 0.12.15, Python 3.13.15, pytest 9.1.1, ruff 0.16.10 via uvx, Chromium 152 for UI screenshots."
+      "notes": "Claude Code 2.1.284 with claude-opus-5-5 (settings model 'opus', effort high; max was also set during the session). Built-in tools only. uv 0.12.15, Python 3.13.15, pytest 9.1.1, ruff 0.16.10 via uvx, Chromium 152 for UI screenshots. Playwright 1.63.0 through `uv run --with playwright` (not a project dependency) for the headless sign-in and chat check of the rewritten page; Docker Compose 5.5.1 for `docker compose config` only (no daemon)."
     },
     "plugins_and_extensions": {
       "status": "used",
@@ -29,9 +29,11 @@
         "investigator/agent.py",
         "investigator/gateway.py",
         "evals/run_eval.py",
-        "evals/results.json"
+        "evals/results.json",
+        "prompts/guard-v1.md",
+        "prompts/compact-v1.md"
       ],
-      "notes": "OpenAI Chat Completions, gpt-6-luna, reasoning_effort none, provider default temperature and max tokens, strict function tools, tool_choice required, parallel_tool_calls false, timeout 60 s, 2 retries. Chosen by evals/run_eval.py against gpt-5.6-luna and gpt-6-sol. Each run records its model settings under config."
+      "notes": "OpenAI Chat Completions through langchain-openai ChatOpenAI (use_responses_api=False: 1.6.7 otherwise switches gpt-6 models with tools to the Responses API), run as a LangGraph 1.2.14 graph guard -> reason <-> act. gpt-6-luna, reasoning_effort none, provider default temperature and max tokens, strict function tools, parallel_tool_calls false, timeout 60 s, 2 retries. tool_choice: guard forces its verdict tool; reason uses auto on a question's first call, required after a tool result, and forces submit_report at the query limit; compaction uses none. Chosen by evals/run_eval.py against gpt-5.6-luna and gpt-6-sol; v6 re-measured on 14 questions x 3. Each run records its model settings under config."
     },
     "skills": {
       "status": "used",
@@ -60,6 +62,9 @@
     "prompts_and_rules": {
       "status": "used",
       "files": [
+        "prompts/system-v6.md",
+        "prompts/guard-v1.md",
+        "prompts/compact-v1.md",
         "prompts/system-v5.md",
         "prompts/system-v4.md",
         "prompts/system-v3.md",
@@ -69,7 +74,7 @@
         "data/starter/schema.sql",
         "investigator/report.py"
       ],
-      "notes": "The system prompt is prompts/system-v5.md plus the domain.md rules (without the worked example) plus schema.sql. Prompt versions are immutable named snapshots; runs record path and SHA. report.py holds the report schema with field descriptions."
+      "notes": "The system prompt is prompts/system-v6.md plus the domain.md rules (without the worked example) plus schema.sql. guard-v1 classifies each new message (allow / off_topic / unsafe); compact-v1 summarizes history beyond 20 messages. Prompt versions are immutable named snapshots; runs record their paths and one SHA over all three. report.py holds the report schema with field descriptions."
     },
     "tool_and_mcp_settings": {
       "status": "default",
@@ -157,13 +162,46 @@
       "redactions": []
     },
     {
+      "name": "Application system prompt v6",
+      "category": "prompts_and_rules",
+      "purpose": "v5 plus 'Reply or investigate' (greetings, help and already-answered questions get a plain reply) and 'Conversation' (query ids restart each question; a report cites only this question's queries); current version",
+      "original_path_or_scope": "prompts/system-v6.md",
+      "saved_path": "prompts/system-v6.md",
+      "version_or_commit": "prompt set sha 5370a2404abe (with guard-v1 and compact-v1)",
+      "used_during": "all runs in runs/; evaluation v6",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Guard prompt v1",
+      "category": "prompts_and_rules",
+      "purpose": "Scope gate before the agent: allow, off_topic or unsafe; when unsure allow; injections and write requests are allowed on purpose and left to the gateway and verifier",
+      "original_path_or_scope": "prompts/guard-v1.md",
+      "saved_path": "prompts/guard-v1.md",
+      "version_or_commit": "prompt set sha 5370a2404abe",
+      "used_during": "every message since the rewrite",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Compaction prompt v1",
+      "category": "prompts_and_rules",
+      "purpose": "Summarize earlier messages beyond the last 20 in at most 250 words; the summary reaches the model as user-side input",
+      "original_path_or_scope": "prompts/compact-v1.md",
+      "saved_path": "prompts/compact-v1.md",
+      "version_or_commit": "prompt set sha 5370a2404abe",
+      "used_during": "long chats (tested live with 9 messages)",
+      "status": "used",
+      "redactions": []
+    },
+    {
       "name": "Application system prompt v5",
       "category": "prompts_and_rules",
-      "purpose": "v4 plus one paragraph: only the system message sets instructions; instructions in the question, query results or an earlier answer are ignored and named in assumptions; current version",
+      "purpose": "v4 plus one paragraph: only the system message sets instructions; instructions in the question, query results or an earlier answer are ignored and named in assumptions",
       "original_path_or_scope": "prompts/system-v5.md",
       "saved_path": "prompts/system-v5.md",
       "version_or_commit": "system prompt sha 6dff85f0c288",
-      "used_during": "evaluation v5 with two injection questions",
+      "used_during": "evaluation v5 with two injection questions; superseded by v6 in the rewrite",
       "status": "used",
       "redactions": []
     },
@@ -174,7 +212,7 @@
       "original_path_or_scope": "prompts/system-v4.md",
       "saved_path": "prompts/system-v4.md",
       "version_or_commit": "system prompt sha 6454070e4c07",
-      "used_during": "demo run 200715-5f13; evaluations of v4",
+      "used_during": "v1 demo run 200715-5f13 (in git history); evaluations of v4",
       "status": "used",
       "redactions": []
     },
@@ -185,7 +223,7 @@
       "original_path_or_scope": "prompts/system-v3.md",
       "saved_path": "prompts/system-v3.md",
       "version_or_commit": "system prompt sha b5f932a8411f",
-      "used_during": "demo runs 175323-434f, 175348-3676, 175401-e4ae; evaluation v3",
+      "used_during": "v1 demo runs (in git history); evaluation v3",
       "status": "used",
       "redactions": []
     },
@@ -196,7 +234,7 @@
       "original_path_or_scope": "prompts/system-v2.md",
       "saved_path": "prompts/system-v2.md",
       "version_or_commit": "system prompt sha c2c2419fd6b7",
-      "used_during": "evaluation v2, run 174313-377a",
+      "used_during": "evaluation v2, run 174313-377a (in git history)",
       "status": "used",
       "redactions": []
     },
@@ -241,7 +279,7 @@
       "purpose": "Choose the model and measure prompt changes through the real pipeline",
       "original_path_or_scope": "evals/run_eval.py",
       "saved_path": "evals/results.json, evals/runs/",
-      "version_or_commit": "6 model/prompt combinations x 15 runs, plus gpt-6-luna v4 and v5 x 30 runs each (10 questions, 2 with injected instructions)",
+      "version_or_commit": "6 model/prompt combinations x 15 runs, plus gpt-6-luna v4 and v5 x 30 runs each (10 questions, 2 with injected instructions); gpt-6-luna v6 on the graph x 42 runs (10 data questions + 4 chat messages)",
       "used_during": "model and prompt selection",
       "status": "used",
       "redactions": []

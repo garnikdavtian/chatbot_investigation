@@ -19,15 +19,16 @@ class LLMError(Exception):
     """The model call failed after the SDK's own retries (timeout, rate limit, 5xx, ...)."""
 
 
-def live_model() -> ChatOpenAI:
+def live_model(model: str | None = None, reasoning_effort: str | None = None) -> ChatOpenAI:
+    """From LLM_* env vars; the eval passes other models."""
     missing = [k for k in ("LLM_API_KEY", "LLM_MODEL") if not os.environ.get(k)]
     if missing:
         raise LLMError(f"set {', '.join(missing)} (see .env.example); replaying saved runs needs no key")
     # use_responses_api=False: langchain-openai sends gpt-6 models with tools to the Responses API by
     # default; the eval validated Chat Completions. max_retries: 408/409/429/5xx with backoff.
-    return ChatOpenAI(model=os.environ["LLM_MODEL"], api_key=os.environ["LLM_API_KEY"],
+    return ChatOpenAI(model=model or os.environ["LLM_MODEL"], api_key=os.environ["LLM_API_KEY"],
                       base_url=os.environ.get("LLM_BASE_URL") or None,
-                      reasoning_effort=os.environ.get("LLM_REASONING_EFFORT") or None,
+                      reasoning_effort=reasoning_effort or os.environ.get("LLM_REASONING_EFFORT") or None,
                       timeout=60, max_retries=2, use_responses_api=False)
 
 

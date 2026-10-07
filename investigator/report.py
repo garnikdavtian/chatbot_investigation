@@ -62,9 +62,12 @@ def fmt_cents(cents: int) -> str:
     return f"{sign}${abs(cents) // 100:,}.{abs(cents) % 100:02d}"
 
 
+CENTS = re.compile(r"(-?\d[\d,]*)(?:\s*|-)cents?\b")  # "183000 cents", also "10000-cent rise"
+
+
 def prose(text: str) -> str:
     """Render '183000 cents' as '$1,830.00'."""
-    return re.sub(r"(-?\d[\d,]*)\s*cents\b", lambda m: fmt_cents(int(m.group(1).replace(",", ""))), text)
+    return CENTS.sub(lambda m: fmt_cents(int(m.group(1).replace(",", ""))), text)
 
 
 def save(run: dict, runs_dir: Path = RUNS) -> Path:
