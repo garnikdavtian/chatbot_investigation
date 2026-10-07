@@ -11,7 +11,7 @@
   POST /api/reports {run_id}        save an answer's checked figures as a report -> {"report_id"}
   GET  /api/reports                 your saved reports
   POST /api/reports/{id}/run {from_month, to_month}  the report's figures per month -> {"report", "columns", "rows"}
-  GET  /api/compare                 the faulty join against the rules
+  GET  /api/compare                 the faulty join and the refund-month assumption against the rules
 
 Every other call needs "Authorization: Bearer <token>". Another user's run is a 404, so run ids reveal nothing.
 A header, not a cookie: another site cannot make the browser send it, so no CSRF. This container holds the

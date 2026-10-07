@@ -495,9 +495,13 @@ a way to be wrong.
   own SQL with new dates was rejected: swapping dates inside SQL text is fragile, and it would have
   to be checked again. The candidate chose this over re-asking the agent for the new period, which
   would keep the prose but cost one model call per run.
-- **The comparison shows SQL on purpose**, because the faulty join is a SQL mistake. Two fixed
-  queries run through the same read-only gateway the model uses. The rule side must
+- **The comparison shows SQL on purpose**, because the faulty join is a SQL mistake. Four fixed
+  queries run through the same read-only gateway the model uses. The rule side of each pair must
   equal `calc.totals` for every month, or the page shows an error instead of figures.
+- **The assumption** is which month a refund belongs to. Rule 2 settles it (the refund date), but
+  counting by the order's month is a common alternative, and on this data it flips the conclusion:
+  net sales rise from August to September instead of falling. The candidate chose it over "sales
+  means gross or net", which is only a choice between existing metrics.
 - **Where it runs.** `/figures` and `/compare` run in the agent container, which already reaches the
   db and holds `calc`. Saved reports live in the api's `history.sqlite` with the users, filtered by
   user like chats; saving the same answer again returns the same report. The api never reaches the
