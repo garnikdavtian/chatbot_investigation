@@ -92,7 +92,7 @@
         ".env.example",
         ".gitignore"
       ],
-      "notes": "Claude Code ran in auto permission mode, a session setting; there are no permission rules in settings.json. Application variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, LLM_REASONING_EFFORT. OPENROUTER_API_KEY was used during development only, to check model availability and prices. .env is gitignored."
+      "notes": "Claude Code ran in auto permission mode, a session setting; there are no permission rules in settings.json. Application variables: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, LLM_REASONING_EFFORT, LLM_MAX_TOKENS (default 4096), LLM_EXTRA_BODY (provider-specific JSON, e.g. Claude thinking off); .env.example has OpenAI, Anthropic and generic presets. OPENROUTER_API_KEY was used during development only, to check model availability and prices. .env is gitignored."
     }
   },
   "configuration_records": [

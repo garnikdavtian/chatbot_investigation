@@ -186,6 +186,15 @@ about 20× the cost.
 OpenRouter, a local server). The trade-off: gpt-6.1-sol does not accept function tools together with
 reasoning in this API (it needs `/v1/responses`), so it was not evaluated.
 
+**Anthropic keys** use Anthropic's OpenAI-compatible endpoint (`https://api.anthropic.com/v1/`), so
+the one client stays and no SDK is added. It ignores `strict` (the code validation below covers that)
+and requires an output cap, so every call now sends `LLM_MAX_TOKENS` (default 4096). Claude 5 models
+think by default, which forced tool calls do not allow; `LLM_EXTRA_BODY` passes
+`{"thinking":{"type":"disabled"}}` or any other provider-specific field through unchanged.
+Smoke-tested with claude-haiku-4-5 through OpenRouter (blocked small talk; main question verified).
+**Rejected:** `langchain-anthropic` behind a provider switch: a second client and message format for
+what the compatible endpoint already does. Add it when prompt caching or native thinking matters.
+
 **Schemas.** Tool schemas are strict, generated from the pydantic model. The report is validated
 again in code, because not every compatible provider enforces strict mode.
 

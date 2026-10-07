@@ -17,13 +17,27 @@ number never reaches the user as "verified".
 
 **Log in as `admin`, password `admin123`.** This default login is created by `start.sh` and is meant
 for local use only. It already has saved demo chats, so **no API key is needed** to look around,
-replay chats, run saved reports or open the comparison page. To ask new questions, put an
-OpenAI-compatible key in `.env` (`LLM_API_KEY`).
+replay chats, run saved reports or open the comparison page.
+
+**To ask new questions, add your own API key.** `start.sh` copies `.env.example` to `.env` on the first
+run. Open `.env`, fill in one provider block, then run `./start.sh` again. Keys go only in `.env`,
+which git ignores; `.env.example` is committed.
+
+| Your key | Lines in `.env` |
+|---|---|
+| OpenAI (default) | `LLM_API_KEY=sk-...` (the rest is already set) |
+| Anthropic | `LLM_BASE_URL=https://api.anthropic.com/v1/`, `LLM_API_KEY=sk-ant-...`, `LLM_MODEL=claude-haiku-4-5`, `LLM_REASONING_EFFORT=` (empty) |
+| Anything OpenAI-compatible (OpenRouter, Gemini, Groq, Ollama…) | that provider's `LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` |
+
+Anthropic works through its [OpenAI-compatible endpoint](https://platform.claude.com/docs/en/api/openai-sdk),
+so no extra library is needed. For Claude 5 models (`claude-sonnet-5-5`, …), also set
+`LLM_EXTRA_BODY='{"thinking":{"type":"disabled"}}'`: they think by default, and the guard's forced tool
+call needs thinking off.
 
 Other commands (Python 3.12+ and [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-uv run pytest                                   # 64 tests, no API key
+uv run pytest                                   # 66 tests, no API key
 uv run python -m investigator check             # replay every saved live run, no API key
 uv run python -m investigator replay <run_id>   # replay one run
 uv run --env-file .env python -m investigator ask "Why did net sales change between August and September 2026?"
@@ -123,7 +137,10 @@ cost 2.5× to 20× more. This is enough to pick a model for this dataset, not a 
 history and corrections: [`docs/llm-usage.md`](docs/llm-usage.md).
 
 Settings live in `.env` (see `.env.example`): `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (any
-OpenAI-compatible endpoint) and `LLM_REASONING_EFFORT`. Each saved run records its model, prompt
+OpenAI-compatible endpoint), `LLM_REASONING_EFFORT`, and optionally `LLM_MAX_TOKENS` (default 4096)
+and `LLM_EXTRA_BODY` (provider-specific JSON). **Claude:** `claude-haiku-4-5` answered the main
+question `verified` with correct figures and refused small talk (one smoke run through OpenRouter,
+2026-10-07); it was not put through the full evaluation. Each saved run records its model, prompt
 versions and database version.
 
 ## Data and assumptions
@@ -179,7 +196,7 @@ prompts/        system prompts v1–v9, guard, chat summary
 data/           starter pack, additions, build script, database, answer key
 runs/           saved live runs (JSON record + Markdown report)
 evals/          model evaluation script and results
-tests/          64 tests, none needs an API key
+tests/          66 tests, none needs an API key
 docs/           architecture diagram, decisions, LLM usage note, screenshots
 ai-workflow/    the AI setup used to build this: README.md, manifest.json, settings, hooks
 ```

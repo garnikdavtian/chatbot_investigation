@@ -1,11 +1,12 @@
 """Model boundary. The only module that builds a chat model.
 
-  live_model() - ChatOpenAI on any OpenAI-compatible endpoint (OpenAI, OpenRouter, ...), chosen by env vars.
+  live_model() - ChatOpenAI on any OpenAI-compatible endpoint (OpenAI, Anthropic, OpenRouter, ...), chosen by env vars.
   Scripted     - plays back recorded AIMessages: replay of saved runs (no key needed) and scripted tests.
                  An Exception in the script is raised to simulate a failure.
 Every call record carries "source" (live / replay / scripted) so cached and simulated
 responses are never mistaken for new model calls.
 """
+import json
 import os
 from typing import Any
 
@@ -24,19 +25,24 @@ def live_model(model: str | None = None, reasoning_effort: str | None = None) ->
     missing = [k for k in ("LLM_API_KEY", "LLM_MODEL") if not os.environ.get(k)]
     if missing:
         raise LLMError(f"set {', '.join(missing)} (see .env.example); replaying saved runs needs no key")
+    try:  # provider-specific fields sent as they are, e.g. Claude's {"thinking": {"type": "disabled"}}
+        extra = json.loads(os.environ.get("LLM_EXTRA_BODY") or "null")
+    except ValueError as e:
+        raise LLMError(f"LLM_EXTRA_BODY is not valid JSON: {e}") from e
     # use_responses_api=False: langchain-openai sends gpt-6 models with tools to the Responses API by
     # default; the eval validated Chat Completions. max_retries: 408/409/429/5xx with backoff.
     return ChatOpenAI(model=model or os.environ["LLM_MODEL"], api_key=os.environ["LLM_API_KEY"],
                       base_url=os.environ.get("LLM_BASE_URL") or None,
                       reasoning_effort=reasoning_effort or os.environ.get("LLM_REASONING_EFFORT") or None,
-                      timeout=60, max_retries=2, use_responses_api=False)
+                      max_tokens=int(os.environ.get("LLM_MAX_TOKENS") or 4096),  # Anthropic needs a cap; a report is ~1k
+                      extra_body=extra, timeout=60, max_retries=2, use_responses_api=False)
 
 
 def describe(model) -> dict:
     if isinstance(model, Scripted):
         return model.config
     return {"base_url": model.openai_api_base or "https://api.openai.com/v1", "model": model.model_name,
-            "reasoning_effort": model.reasoning_effort}
+            "reasoning_effort": model.reasoning_effort, "max_tokens": model.max_tokens, "extra_body": model.extra_body}
 
 
 class Scripted(BaseChatModel):

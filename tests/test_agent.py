@@ -307,3 +307,17 @@ def test_inspector_events_follow_the_real_path(db):
     events.clear()
     chat("tell me a joke", Scripted(script=[verdict("off_topic")]), db_path=db, on_event=events.append)
     assert [e.get("node") for e in events if e["kind"] == "node"] == ["start", "guard", "end"]
+
+
+def test_live_model_takes_any_provider_from_env(monkeypatch):
+    from investigator.llm import describe, live_model
+    for k, v in {"LLM_BASE_URL": "https://api.anthropic.com/v1/", "LLM_API_KEY": "sk-ant-test",
+                 "LLM_MODEL": "claude-haiku-4-5", "LLM_REASONING_EFFORT": "",
+                 "LLM_EXTRA_BODY": '{"thinking":{"type":"disabled"}}'}.items():
+        monkeypatch.setenv(k, v)
+    d = describe(live_model())  # no network: only builds the client
+    assert d == {"base_url": "https://api.anthropic.com/v1/", "model": "claude-haiku-4-5", "reasoning_effort": None,
+                 "max_tokens": 4096, "extra_body": {"thinking": {"type": "disabled"}}}
+    monkeypatch.setenv("LLM_EXTRA_BODY", "{not json")
+    with pytest.raises(LLMError, match="LLM_EXTRA_BODY"):
+        live_model()
