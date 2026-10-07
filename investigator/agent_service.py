@@ -2,7 +2,8 @@
 calls; the api sends the chat's last run with each question and saves what comes back.
 
   GET  /config                     model, limits, and whether new questions can be asked
-  POST /invoke {question, parent}  NDJSON: {"progress": ...} after each graph step, then {"run": ...}
+  POST /invoke {question, parent}  NDJSON: {"event": ...} for the inspector, {"progress": ...} after each graph step,
+                                   then {"run": ...}
   POST /replay {run, parent}       {"status", "diffs"}: the recorded responses re-run, no LLM call
   POST /figures {from_month, to_month}  gross, refunds and net per month, all customers and per segment (calc, no LLM)
   GET  /compare                    the faulty join and the refund-month assumption against the rules (fixed SQL, no LLM)
@@ -24,6 +25,7 @@ MAX_BODY_BYTES = 5_000_000  # a question plus its chat's last run record
 def config() -> dict:
     return {"live": bool(os.environ.get("LLM_API_KEY") and os.environ.get("LLM_MODEL")),
             "model": os.environ.get("LLM_MODEL"), "max_queries": agent.MAX_QUERIES,
+            "tools": [t["function"]["name"] for t in agent.TOOLS],
             "max_messages": agent.MAX_MESSAGES, "max_rows": gateway.MAX_ROWS, "timeout_s": gateway.TIMEOUT_S}
 
 
@@ -116,7 +118,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
         run = agent.chat(body["question"], model, body.get("parent"),
-                         on_step=lambda r: self._line({"progress": progress(r)}))
+                         on_step=lambda r: self._line({"progress": progress(r)}),
+                         on_event=lambda e: self._line({"event": e}))
         self._line({"run": run})
 
     def _line(self, data) -> None:

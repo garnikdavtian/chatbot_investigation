@@ -391,6 +391,13 @@ answered a joke request with an investigation.
 - **Cost:** about $0.0001 and 3–5 s per message. **Evidence:** 6/6 off-topic messages blocked and
   0/36 data and chat messages blocked in the v6 evaluation.
 
+**guard-v2 (current): no small talk.** v1 allowed greetings and thanks so the model could chat
+briefly; in manual testing "how r ya" got "I'm doing well, thanks!", which a sales-data tool should not
+say. v2 refuses greetings, small talk and thanks on their own, and still allows a data question that
+starts with one ("thanks, now by segment"). `evals/guard_eval.py`, 3 trials each: small talk and
+off-topic let through v1 24/33, v2 0/33; data questions and follow-ups refused v1 0/57, v2 0/57.
+Saved runs replay with the guard version they recorded.
+
 **Ceiling.** A classifier can be argued with. A message that talks the guard into "allow" reaches
 `reason`, which has the same capability limits and checks as before.
 

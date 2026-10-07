@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Data Investigator: full architecture",
+    "output": "docs/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/garnikdavtian/chatbot_investigation.git", "provider": "github", "link_mode": "web", "revision": "afebeaefb9c06e5419466bbf668c0b56050f1ee3"}
+  },
+  "components": [
+    {"id": "browser", "type": "external", "label": "Browser", "sublabel": "login, chats, reports", "pos": [40, 220], "size": [170, 64],
+     "sources": [{"path": "investigator/static/app.js", "line": 1, "label": "page script"}]},
+    {"id": "ui", "type": "frontend", "label": "ui container", "sublabel": "nginx: page + /api proxy", "tag": "only published port", "pos": [340, 220], "size": [170, 64],
+     "sources": [{"path": "docker/nginx.conf", "line": 1, "end_line": 20}, {"path": "compose.yaml", "line": 7, "end_line": 14}]},
+    {"id": "api", "type": "backend", "label": "api container", "sublabel": "FastAPI: login, chats", "tag": "no LLM key, no internet", "pos": [640, 220], "size": [170, 64],
+     "sources": [{"path": "investigator/api.py", "line": 99, "end_line": 126}, {"path": "compose.yaml", "line": 15, "end_line": 23}]},
+    {"id": "agent", "type": "backend", "label": "agent container", "sublabel": "LangGraph guard→reason⇄act", "tag": "holds LLM key", "pos": [940, 220], "size": [170, 64],
+     "sources": [{"path": "investigator/agent.py", "line": 184, "end_line": 191, "label": "graph"}, {"path": "investigator/agent_service.py", "line": 93, "end_line": 120, "label": "routes"}, {"path": "compose.yaml", "line": 24, "end_line": 31}]},
+    {"id": "db", "type": "security", "label": "db container", "sublabel": "read-only SQL gateway", "tag": "SELECT only", "pos": [1240, 220], "size": [170, 64],
+     "sources": [{"path": "investigator/gateway.py", "line": 1, "end_line": 10, "label": "three locks"}, {"path": "investigator/gateway.py", "line": 70, "end_line": 80}, {"path": "compose.yaml", "line": 32, "end_line": 36}]},
+    {"id": "sales", "type": "database", "label": "investigation.sqlite", "sublabel": "sales data, mounted :ro", "pos": [1240, 400], "size": [170, 64],
+     "sources": [{"path": "compose.yaml", "line": 35}]},
+    {"id": "history", "type": "database", "label": "history.sqlite", "sublabel": "users, sessions, chats, reports", "pos": [640, 400], "size": [180, 64],
+     "sources": [{"path": "investigator/history.py", "line": 20, "end_line": 34}, {"path": "compose.yaml", "line": 21}]},
+    {"id": "llm", "type": "cloud", "label": "LLM API", "sublabel": "OpenAI-compatible", "pos": [940, 40], "size": [170, 64],
+     "sources": [{"path": "investigator/llm.py", "line": 22, "end_line": 32}]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "docker compose on 127.0.0.1", "wraps": ["ui", "api", "agent", "db", "sales", "history"]},
+    {"kind": "security-group", "label": "back network (internal)", "wraps": ["db", "sales"]}
+  ],
+  "connections": [
+    {"id": "page", "from": "browser", "to": "ui", "label": "HTTP :8000", "variant": "emphasis"},
+    {"id": "proxy", "from": "ui", "to": "api", "label": "proxy /api/*", "variant": "emphasis"},
+    {"id": "invoke", "from": "api", "to": "agent", "label": "/invoke NDJSON", "variant": "emphasis"},
+    {"id": "sql", "from": "agent", "to": "db", "label": "POST /query", "variant": "emphasis"},
+    {"id": "readonly", "from": "db", "to": "sales", "label": "mode=ro", "variant": "security"},
+    {"id": "save", "from": "api", "to": "history", "label": "save run + login"},
+    {"id": "model", "from": "agent", "to": "llm", "label": "egress network", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "Request path", "items": ["Page posts the question to /api/ask", "api checks the login, calls agent /invoke", "agent streams progress; api saves the run and streams it on"]},
+    {"dot": "rose", "title": "Isolation", "items": ["Only ui is published, on 127.0.0.1", "front, mid, back are internal networks", "Only the agent reaches the internet (egress) and holds the key", "db opens the file read-only, query_only, SELECT-only authorizer"]},
+    {"dot": "emerald", "title": "Checked answers", "items": ["Verifier compares every figure with calc on a data snapshot", "Failed checks send the report back for repair", "Answer is labeled verified, unverified or incomplete"]},
+    {"dot": "amber", "title": "No-LLM routes", "items": ["/figures: saved reports re-run through calc", "/compare: faulty join and refund-month queries", "/replay: re-runs a saved chat's SQL"]}
+  ]
+}

@@ -37,7 +37,7 @@ def ask(client, auth, question="hi", parent=None):
     r = client.post("/api/ask", headers=auth, json={"question": question, "parent_run_id": parent})
     assert r.status_code == 200, r.text
     lines = [json.loads(x) for x in r.text.splitlines()]
-    assert "progress" in lines[0] and "run" in lines[-1]
+    assert lines[0]["event"]["state"] == "start" and any("progress" in x for x in lines) and "run" in lines[-1]
     return lines[-1]["run"]
 
 
@@ -162,3 +162,5 @@ def test_add_user_with_demo_chats_asks_once_and_shares_no_run(client, monkeypatc
         main(["add-user", "reviewer", "--demo-chats"])
     assert len(prompts) == 2
     assert main(["add-user", "bob", "--demo-chats"]) == 0 and history.list_runs(2) == []  # each run has one owner
+    assert main(["add-user", "admin", "--password", "admin123"]) == 0 and len(prompts) == 4  # start.sh: no prompt
+    assert history.login("admin", "admin123")

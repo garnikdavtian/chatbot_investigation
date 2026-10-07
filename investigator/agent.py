@@ -19,6 +19,7 @@ import json
 import os
 import secrets
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import zip_longest
@@ -46,7 +47,7 @@ from investigator.verify import money_issues, verify
 
 DB = os.environ.get("DB_URL") or ROOT / "data" / "investigation.sqlite"  # a file, or the db container
 # versions are immutable: saved runs replay with their own
-PROMPTS = {"system": "prompts/system-v9.md", "guard": "prompts/guard-v1.md", "compact": "prompts/compact-v1.md"}
+PROMPTS = {"system": "prompts/system-v9.md", "guard": "prompts/guard-v2.md", "compact": "prompts/compact-v1.md"}
 MAX_QUERIES = 6
 MAX_CALLS = 8      # reason calls per question; the most seen in 113 eval runs of v4/v5 was 7
 MAX_REPAIRS = 1
@@ -109,6 +110,12 @@ class Ctx:
     db: object  # file path or DB_URL
     data: dict
     prompts: dict  # name -> text
+    on_event: Callable[[dict], None] | None = None  # per run, so concurrent runs never mix their events
+
+    def emit(self, **event) -> None:
+        """For the page's agent inspector: {"kind": "run" | "node" | "tool", ...}. Without a listener, a no-op."""
+        if self.on_event:
+            self.on_event(event)
 
 
 def _call(ctx: Ctx, purpose: str, messages: list, tools: list, tool_choice) -> tuple[AIMessage, dict]:
@@ -131,6 +138,7 @@ def _turn(messages: list) -> int:
 
 
 def guard(state: State, runtime: Runtime[Ctx]) -> dict:
+    runtime.context.emit(kind="node", node="guard")
     asked = [m.text for m in state["messages"] if isinstance(m, HumanMessage)]
     text = (f"Previous question: {asked[-2]}\n\n" if len(asked) > 1 else "") + f"New message: {asked[-1]}"
     ctx = runtime.context
@@ -144,6 +152,7 @@ def guard(state: State, runtime: Runtime[Ctx]) -> dict:
 
 
 def reason(state: State, runtime: Runtime[Ctx]) -> dict:
+    runtime.context.emit(kind="node", node="reason")
     ctx, messages, calls, update = runtime.context, state["messages"], list(state["model_calls"]), {}
     if not any(c["purpose"] == "reason" for c in calls):  # first call of this question: compact older history
         earlier = messages[:_turn(messages)]
@@ -166,10 +175,15 @@ def reason(state: State, runtime: Runtime[Ctx]) -> dict:
 
 
 def act(state: State, runtime: Runtime[Ctx]) -> dict:
+    ctx = runtime.context
+    ctx.emit(kind="node", node="act")
     run = {k: state[k] for k in ("report", "verification", "limit_reached")}
     run |= {k: list(state[k]) for k in ("queries", "repairs", "checked")}
     msg, call = state["messages"][-1], len(state["model_calls"]) - 1
-    out = [ToolMessage(_handle(run, tc, runtime.context, call), tool_call_id=tc["id"]) for tc in msg.tool_calls]
+    out = []
+    for tc in msg.tool_calls:  # one at a time, in order
+        ctx.emit(kind="tool", name=tc["name"])
+        out.append(ToolMessage(_handle(run, tc, ctx, call), tool_call_id=tc["id"]))
     out += [ToolMessage("Error: tool arguments must be a JSON object. Nothing was run.", tool_call_id=tc["id"])
             for tc in msg.invalid_tool_calls]
     return run | {"messages": out}
@@ -193,9 +207,22 @@ GRAPH = graph.compile()
 RUN_KEYS = ("guard", "compacted", "queries", "model_calls", "report", "verification", "repairs", "limit_reached")
 
 
-def chat(question: str, model, parent: dict | None = None, db_path=DB, prompts=PROMPTS, on_step=None) -> dict:
+def chat(question: str, model, parent: dict | None = None, db_path=DB, prompts=PROMPTS, on_step=None,
+         on_event=None) -> dict:
     """Answer one message in the conversation that `parent` (a saved run) ends, or in a new one.
-    on_step(run), if given, is called after every node, so a UI can show progress."""
+    on_step(run), if given, is called after every node, so a UI can show progress.
+    on_event(event), if given, gets the inspector's events: run start/end, each node as it starts, each tool call."""
+    emit = Ctx(model, db_path, {}, {}, on_event).emit
+    emit(kind="run", state="start", tools=[t["function"]["name"] for t in TOOLS])
+    emit(kind="node", node="start")  # LangGraph never runs START or END as functions
+    try:
+        return _chat(question, model, parent, db_path, prompts, on_step, on_event)
+    finally:  # however the run ends: END from a router, a failed data check or a model error
+        emit(kind="node", node="end")
+        emit(kind="run", state="end")
+
+
+def _chat(question: str, model, parent, db_path, prompts, on_step, on_event) -> dict:
     texts = {k: system_prompt(p) if k == "system" else (ROOT / p).read_text().strip() for k, p in prompts.items()}
     prev = parent["state"] if parent else {"messages": [], "summary": "", "checked": []}
     run = {
@@ -222,7 +249,7 @@ def chat(question: str, model, parent: dict | None = None, db_path=DB, prompts=P
              "report": None, "verification": None, "repairs": [], "limit_reached": False}
     try:
         for state in GRAPH.stream(start, {"recursion_limit": 2 * MAX_CALLS + 3}, stream_mode="values",
-                                  context=Ctx(model, db_path, data, texts)):
+                                  context=Ctx(model, db_path, data, texts, on_event)):
             run |= {k: state[k] for k in RUN_KEYS}
             run["state"] = {"messages": messages_to_dict(state["messages"]), "summary": state["summary"],
                             "checked": state["checked"]}

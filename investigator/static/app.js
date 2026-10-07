@@ -25,6 +25,7 @@ const ICONS = {
   message: ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"],
   ban: [["circle", {cx: 12, cy: 12, r: 10}], "m4.9 4.9 14.2 14.2"],
   waterfall: ["M3 3v16a2 2 0 0 0 2 2h16", "M7 17V8", "M11 8v3", "M15 11v3", "M19 14v3"],
+  activity: ["M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"],
 };
 const SUGGESTIONS = [
   {icon: "trend", title: "Explain a change", text: "Why did net sales change between August and September 2026?"},
@@ -132,8 +133,9 @@ async function api(path, body) {
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 }
-// /api/ask answers with one JSON object per line: {"progress": ...} after each graph step, then {"run": ...}.
-async function askStream(body, onProgress) {
+// /api/ask answers with one JSON object per line: {"event": ...} for the inspector, {"progress": ...} after each
+// graph step, then {"run": ...}.
+async function askStream(body, onProgress, onEvent) {
   const r = await call("/api/ask", body);
   if (!r.ok) {
     let message = r.statusText;
@@ -151,7 +153,7 @@ async function askStream(body, onProgress) {
       buffer = buffer.slice(i + 1);
       if (!line) continue;
       const msg = JSON.parse(line);
-      if (msg.run) run = msg.run; else onProgress(msg.progress);
+      if (msg.run) run = msg.run; else if (msg.event) onEvent(msg.event); else onProgress(msg.progress);
     }
     if (done) break;
   }
@@ -641,6 +643,63 @@ function pendingView() {
 const elapsed = () => pending ? `${Math.round((Date.now() - pending.t0) / 1000)} s · at most ${config.max_queries} read-only queries` : "";
 setInterval(() => { const el = $("elapsed"); if (el) el.textContent = elapsed(); }, 1000);
 
+// ---- agent inspector: the run being answered, live, or a replay of the last answer in the chat on screen
+let node = null, litTool = null, playing = 0;
+function step(next) {
+  const edge = node && node !== next && $(`e-${node}-${next}`);
+  if (edge) { edge.classList.remove("flash"); void edge.getBoundingClientRect(); edge.classList.add("flash"); }  // reflow restarts the flash
+  document.querySelectorAll("#graph .node.on").forEach(n => n.classList.remove("on"));
+  $(`n-${next}`)?.classList.add("on");
+  node = next;
+  if (next !== "act") useTool(null);
+}
+function useTool(name) {
+  litTool?.classList.remove("on");
+  litTool = name ? $(`tool-${name}`) : null;
+  if (litTool) { litTool.classList.add("on"); const n = litTool.querySelector("b"); n.textContent = +n.textContent + 1; }
+}
+function inspect(e) {
+  if (e.kind === "run" && e.state === "start") {
+    node = litTool = null;
+    document.querySelectorAll("#graph .on, #graph .flash").forEach(el => el.classList.remove("on", "flash"));
+    $("tools").replaceChildren(...e.tools.map(t => h("tr", {id: `tool-${t}`}, h("td", {}, t), h("td", {}, h("b", {}, "0")))));
+  } else if (e.kind === "node") step(e.node);
+  else if (e.kind === "tool") useTool(e.name);
+}
+// A saved run has no events, but its model calls give the same path: each reason call with tool calls went to act.
+function traceOf(run) {
+  const ev = [{kind: "run", state: "start", tools: config.tools}, {kind: "node", node: "start"}];
+  for (const c of run.model_calls) {
+    if (c.purpose === "guard") ev.push({kind: "node", node: "guard"});
+    if (c.purpose !== "reason") continue;  // a compaction call runs inside reason
+    const m = c.message.data, calls = m.tool_calls || [];
+    ev.push({kind: "node", node: "reason"});
+    if (calls.length || m.invalid_tool_calls?.length) ev.push({kind: "node", node: "act"}, ...calls.map(t => ({kind: "tool", name: t.name})));
+  }
+  return [...ev, {kind: "node", node: "end"}, {kind: "run", state: "end"}];
+}
+async function play(run) {
+  const token = ++playing;
+  $("insp-status").textContent = `Replay of the last answer: ${run.question}`;
+  for (const e of traceOf(run)) {
+    if (token !== playing) return;
+    inspect(e);
+    if (e.kind !== "run") await new Promise(ok => setTimeout(ok, 450));
+  }
+}
+function setInspector(open) {
+  $("inspector").hidden = !open;
+  $("inspect").setAttribute("aria-expanded", String(open));
+  if (open && !pending) replayLast();
+}
+function replayLast() {
+  const run = thread?.runs.at(-1);
+  if (run) return play(run);
+  ++playing;
+  inspect({kind: "run", state: "start", tools: config.tools});
+  $("insp-status").textContent = "Ask a question to watch it live, or open a chat to replay its last answer.";
+}
+
 // ---- views
 function emptyView() {
   return h("div", {class: "hello"}, h("div", {class: "logo"}, icon("search")),
@@ -667,6 +726,7 @@ function render() {
   document.title = page || thread ? `${title} · Data Investigator` : "Data Investigator";
   $("q").placeholder = !config.live ? "No API key: saved chats only" : thread ? "Ask a follow-up…" : "Ask why sales changed, or ask for a chart…";
   $("q").disabled = $("composer").querySelector("button").disabled = !config.live || !!pending;
+  $("insp-play").disabled = !!pending || !thread;
   renderList();
 }
 const toBottom = () => { const sc = $("scroll"); sc.scrollTop = sc.scrollHeight; };
@@ -707,11 +767,13 @@ async function ask(question) {
   $("q").value = ""; grow(); render(); toBottom();
   let run = null;
   try {
+    ++playing;
+    $("insp-status").textContent = `Live: ${question}`;
     run = await askStream({question, parent_run_id: parent}, progress => {
       pending.progress = progress;
       const el = $("pending");
       if (el && token === nav) { el.replaceChildren(...pendingView()); toBottom(); }
-    });
+    }, inspect);
     runs = await api("/api/runs");
   } catch (e) {
     if (token === nav) notice = {nav, question, error: e.message};
@@ -742,7 +804,14 @@ async function init() {
   $("new").addEventListener("click", () => { setDrawer(false); if (location.hash) history.pushState(null, "", location.pathname); route(); });
   $("menu").addEventListener("click", () => setDrawer(!$("side").classList.contains("open")));
   $("scrim").addEventListener("click", () => setDrawer(false));
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && $("side").classList.contains("open")) { setDrawer(false); $("menu").focus(); } });
+  $("inspect").addEventListener("click", () => setInspector($("inspector").hidden));
+  $("insp-close").addEventListener("click", () => { setInspector(false); $("inspect").focus(); });
+  $("insp-play").addEventListener("click", replayLast);
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if ($("side").classList.contains("open")) { setDrawer(false); $("menu").focus(); }
+    else if (!$("inspector").hidden) { setInspector(false); $("inspect").focus(); }
+  });
   $("login-form").addEventListener("submit", logIn);
   if (!key) return showLogin();
   $("app").hidden = false;

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# One command to run the app: ./start.sh [login name]   (default name: reviewer)
+# One command to run the app: ./start.sh   then log in as admin / admin123
 # Uses Docker when it is running (four containers), otherwise uv (one process). Then open http://127.0.0.1:8000.
 set -euo pipefail
 cd "$(dirname "$0")"
-name="${1:-reviewer}"
 
 if [ ! -f .env ]; then
   cp .env.example .env
@@ -11,21 +10,21 @@ if [ ! -f .env ]; then
   echo "Without a key: the demo chats, replay, saved reports and the comparison page all work."
 fi
 
-# The first run asks for a password; later runs find the user and skip this.
-create_user() { "$@" python -m investigator add-user "$name" --demo-chats || true; }
+# Local default login; later runs find the user and skip this.
+create_user() { "$@" python -m investigator add-user admin --password admin123 --demo-chats || true; }
 
 if docker info >/dev/null 2>&1; then
   echo "Starting with Docker: ui, api, agent and db containers."
   docker compose up --build -d
-  create_user docker compose exec api
+  create_user docker compose exec -T api
   echo
-  echo "Open http://127.0.0.1:8000 and log in as '$name'. Logs: docker compose logs -f   Stop: docker compose down"
+  echo "Open http://127.0.0.1:8000 and log in as admin / admin123. Logs: docker compose logs -f   Stop: docker compose down"
 else
   command -v uv >/dev/null || { echo "Install Docker (and start it) or uv: https://docs.astral.sh/uv/" >&2; exit 1; }
   echo "Docker is not running; starting with uv in this terminal (Ctrl+C stops it)."
   uv sync --frozen --quiet
   create_user uv run
   echo
-  echo "Log in as '$name' at the address below."
+  echo "Log in as admin / admin123 at the address below."
   exec uv run --env-file .env python -m investigator serve
 fi

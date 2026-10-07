@@ -293,3 +293,17 @@ def test_replay_reproduces_and_detects_a_data_change(db, tmp_path):
     new, diffs = replay(saved, parent, db_path=db)
     assert {"db_sha changed since recording", "q1 result differs"} <= set(diffs)
     assert "status verified -> failed" in diffs  # the new data triggers a repair round the recording never had
+
+
+def test_inspector_events_follow_the_real_path(db):
+    events = []
+    run = chat("Why did net sales change?", scripted(*INVESTIGATION), db_path=db, on_event=events.append)
+    assert run["status"] == "verified"
+    assert events[0] == {"kind": "run", "state": "start", "tools": ["run_sql", "submit_report"]}
+    path = [e.get("node") or e.get("name") for e in events[1:-1]]
+    assert path == ["start", "guard", "reason", "act", "run_sql", "reason", "act", "run_sql",
+                    "reason", "act", "submit_report", "end"]
+    assert events[-1] == {"kind": "run", "state": "end"}
+    events.clear()
+    chat("tell me a joke", Scripted(script=[verdict("off_topic")]), db_path=db, on_event=events.append)
+    assert [e.get("node") for e in events if e["kind"] == "node"] == ["start", "guard", "end"]

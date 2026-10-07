@@ -30,7 +30,8 @@
         "investigator/gateway.py",
         "evals/run_eval.py",
         "evals/results.json",
-        "prompts/guard-v1.md",
+        "evals/guard_eval.py",
+        "prompts/guard-v2.md",
         "prompts/compact-v1.md"
       ],
       "notes": "OpenAI Chat Completions through langchain-openai ChatOpenAI (use_responses_api=False: 1.6.7 otherwise switches gpt-6 models with tools to the Responses API), run as a LangGraph 1.2.14 graph guard -> reason <-> act. gpt-6-luna, reasoning_effort none, provider default temperature and max tokens, strict function tools, parallel_tool_calls false, timeout 60 s, 2 retries. tool_choice: guard forces its verdict tool; reason uses auto on a question's first call, required after a tool result, and forces submit_report at the query limit; compaction uses none. Chosen by evals/run_eval.py against gpt-5.6-luna and gpt-6-sol; v6 re-measured on 14 questions x 3. Each run records its model settings under config. The api container is FastAPI 0.142.2 on uvicorn 0.54.0 (httpx 0.28.1 in dev, for TestClient); it calls the agent container over HTTP for every question."
@@ -63,6 +64,7 @@
       "status": "used",
       "files": [
         "prompts/system-v9.md",
+        "prompts/guard-v2.md",
         "prompts/guard-v1.md",
         "prompts/compact-v1.md",
         "prompts/system-v8.md",
@@ -77,7 +79,7 @@
         "data/starter/schema.sql",
         "investigator/report.py"
       ],
-      "notes": "The system prompt is prompts/system-v9.md plus the domain.md rules (without the worked example) plus schema.sql. guard-v1 classifies each new message (allow / off_topic / unsafe); compact-v1 summarizes history beyond 20 messages. Prompt versions are immutable named snapshots; runs record their paths and one SHA over all three. report.py holds the report schema with field descriptions; since v9 the Finding.kind description also carries the 'why needs an unknown finding' rule."
+      "notes": "The system prompt is prompts/system-v9.md plus the domain.md rules (without the worked example) plus schema.sql. guard-v2 classifies each new message (allow / off_topic / unsafe; small talk is off_topic since v2); compact-v1 summarizes history beyond 20 messages. Prompt versions are immutable named snapshots; runs record their paths and one SHA over all three. report.py holds the report schema with field descriptions; since v9 the Finding.kind description also carries the 'why needs an unknown finding' rule."
     },
     "tool_and_mcp_settings": {
       "status": "default",
@@ -193,7 +195,18 @@
       "original_path_or_scope": "prompts/guard-v1.md",
       "saved_path": "prompts/guard-v1.md",
       "version_or_commit": "prompt set sha 5370a2404abe",
-      "used_during": "every message since the rewrite",
+      "used_during": "every message from the rewrite until guard-v2; saved runs replay with it",
+      "status": "used",
+      "redactions": []
+    },
+    {
+      "name": "Guard prompt v2 (current)",
+      "category": "prompts_and_rules",
+      "purpose": "As v1, but greetings, small talk and thanks on their own are off_topic: the app is not a general chatbot. Measured by evals/guard_eval.py: small talk let through 0/33 (v1 24/33), data questions refused 0/57",
+      "original_path_or_scope": "prompts/guard-v2.md",
+      "saved_path": "prompts/guard-v2.md",
+      "version_or_commit": "added 2026-10-07 after the candidate's manual test (\"how r ya\" got a friendly reply)",
+      "used_during": "every message since 2026-10-07 evening",
       "status": "used",
       "redactions": []
     },

@@ -43,7 +43,7 @@ and limits under `config`.
 
 | What | Path in this repository | Original location |
 |---|---|---|
-| Application prompts, current | `prompts/system-v9.md`, `prompts/guard-v1.md`, `prompts/compact-v1.md` | same |
+| Application prompts, current | `prompts/system-v9.md`, `prompts/guard-v2.md`, `prompts/compact-v1.md` | same |
 | Earlier system prompt versions | `prompts/system-v1.md` to `system-v8.md` | same; versions are immutable, and saved runs name the ones they used |
 | Business rules and schema, appended to the prompt | `data/starter/domain.md`, `data/starter/schema.sql` | starter pack, unchanged |
 | Tool definitions and report schema | `investigator/agent.py` (`RUN_SQL`, `SUBMIT`), `investigator/report.py` (`Report`) | same |
