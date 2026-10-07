@@ -5,7 +5,7 @@ calls; the api sends the chat's last run with each question and saves what comes
   POST /invoke {question, parent}  NDJSON: {"progress": ...} after each graph step, then {"run": ...}
   POST /replay {run, parent}       {"status", "diffs"}: the recorded responses re-run, no LLM call
   POST /figures {from_month, to_month}  gross, refunds and net per month, all customers and per segment (calc, no LLM)
-  GET  /compare                    the faulty join against the rules (fixed SQL, no LLM)
+  GET  /compare                    the faulty join and the refund-month assumption against the rules (fixed SQL, no LLM)
 
 No auth: only the api container can reach it (an internal compose network). It holds the LLM key and reaches
 the sales data through the db service; it never sees passwords or other users' chats.
@@ -39,6 +39,9 @@ def progress(run: dict) -> dict:
 GROSS = "SELECT substr(order_date, 1, 7) AS month, sum(amount_cents) FROM orders GROUP BY 1"
 GROSS_NAIVE_JOIN = ("SELECT substr(o.order_date, 1, 7) AS month, sum(o.amount_cents) FROM orders o\n"
                     "LEFT JOIN refunds r ON r.order_id = o.order_id GROUP BY 1")
+REFUNDS = "SELECT substr(refund_date, 1, 7) AS month, sum(amount_cents) FROM refunds GROUP BY 1"
+REFUNDS_BY_ORDER_MONTH = ("SELECT substr(o.order_date, 1, 7) AS month, sum(r.amount_cents) FROM refunds r\n"
+                          "JOIN orders o ON o.order_id = r.order_id GROUP BY 1")
 
 
 def figures(first: str, last: str) -> dict:
@@ -51,22 +54,28 @@ def compare() -> dict:
     """Raises RuntimeError if a query fails or the rule side disagrees with calc: a bug, never shown as figures."""
     _, data = gateway.snapshot(agent.DB)
     by_month = {}
-    for sql in (GROSS, GROSS_NAIVE_JOIN):
+    for sql in (GROSS, GROSS_NAIVE_JOIN, REFUNDS, REFUNDS_BY_ORDER_MONTH):
         r = gateway.query(agent.DB, sql)
         if not r.ok:
             raise RuntimeError(f"comparison query failed: {r.message}")
         by_month[sql] = dict(r.rows)
-    gross, naive = by_month[GROSS], by_month[GROSS_NAIVE_JOIN]
-    months = sorted(gross)
+    gross, naive, refunds, by_order = (by_month[q] for q in (GROSS, GROSS_NAIVE_JOIN, REFUNDS, REFUNDS_BY_ORDER_MONTH))
+    months = sorted(set(gross) | set(refunds))
     for m in months:
         rule = calc.totals(data, *calc.month_bounds(m))
-        if gross.get(m, 0) != rule["gross_cents"]:
+        if (gross.get(m, 0), refunds.get(m, 0)) != (rule["gross_cents"], rule["refunds_cents"]):
             raise RuntimeError(f"comparison SQL disagrees with the metric rules for {m}")
     return {
         "faulty_join": {
             "sql_rule": GROSS, "sql_alt": GROSS_NAIVE_JOIN,
             "columns": ["month", "correct_gross_cents", "naive_join_gross_cents", "difference_cents"],
             "rows": [[m, gross.get(m, 0), naive.get(m, 0), naive.get(m, 0) - gross.get(m, 0)] for m in months]},
+        "refund_month": {
+            "sql_rule": REFUNDS, "sql_alt": REFUNDS_BY_ORDER_MONTH,
+            "columns": ["month", "gross_cents", "refunds_by_refund_date_cents", "refunds_by_order_date_cents",
+                        "net_by_refund_date_cents", "net_by_order_date_cents"],
+            "rows": [[m, gross.get(m, 0), refunds.get(m, 0), by_order.get(m, 0), gross.get(m, 0) - refunds.get(m, 0),
+                      gross.get(m, 0) - by_order.get(m, 0)] for m in months]},
     }
 
 

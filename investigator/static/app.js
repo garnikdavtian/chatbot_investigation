@@ -582,15 +582,30 @@ function reportView(rep) {
       h("button", {type: "submit", class: "btn"}, icon("replay", "sm"), "Run")), out);
 }
 function compareView(cmp) {
-  const fj = cmp.faulty_join;
+  const fj = cmp.faulty_join, rm = cmp.refund_month;
   const foot = "Computed by the SQL shown below. The rule side is checked against the business rules before it is shown.";
   const sql = (pair, alt, rule) => h("div", {class: "notes"}, h("section", {}, h("h3", {}, alt), h("pre", {}, pair.sql_alt)),
     h("section", {}, h("h3", {}, rule), h("pre", {}, pair.sql_rule)));
+  const pick = (cols) => [cols, rm.rows.map(r => cols.map(c => r[rm.columns.indexOf(c)]))];
+  const shown = h("div", {class: "page"});
+  const show = byOrder => {
+    const [cols, rows] = pick(byOrder
+      ? ["month", "gross_cents", "refunds_by_order_date_cents", "net_by_order_date_cents", "net_by_refund_date_cents"]
+      : ["month", "gross_cents", "refunds_by_refund_date_cents", "net_by_refund_date_cents"]);
+    shown.replaceChildren(barChart(byOrder ? "Net sales: refunds in their order's month vs the rule" : "Net sales under the rule", cols, rows,
+      byOrder ? ["net_by_refund_date_cents", "net_by_order_date_cents"] : ["net_by_refund_date_cents"], foot), centsTable(cols, rows));
+  };
+  const radio = (byOrder, label) => h("label", {}, h("input", {type: "radio", name: "refund-month", checked: !byOrder, onchange: () => show(byOrder)}), label);
+  show(false);
   return h("div", {class: "page"},
     h("h2", {class: "page-h"}, "Before and after correcting a faulty join"),
     h("p", {class: "caption", style: "margin:0"}, "Joining refund rows to orders repeats an order's amount once for each of its refunds (rule 3). Summing each table on its own corrects it."),
     barChart("Gross sales: faulty join vs corrected", fj.columns, fj.rows, ["naive_join_gross_cents", "correct_gross_cents"], foot),
-    centsTable(fj.columns, fj.rows), sql(fj, "Before: orders joined to refunds", "After: orders summed on their own"));
+    centsTable(fj.columns, fj.rows), sql(fj, "Before: orders joined to refunds", "After: orders summed on their own"),
+    h("h2", {class: "page-h"}, "Assumption: which month does a refund belong to?"),
+    h("div", {class: "card tool switch", role: "radiogroup", "aria-label": "A refund belongs to"},
+      radio(false, "The month it was paid (the rule)"), radio(true, "The month of its order")),
+    shown, sql(rm, "Refunds by their order's month", "Refunds by refund date (rule 2)"));
 }
 async function showPage(id) {
   const token = ++nav;

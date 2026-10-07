@@ -135,16 +135,19 @@ containers and the API; D18 covers the optional enhancements.
 
 ## Optional enhancements
 
-None of them calls the model: the figures come from code, so
+All three from the brief are built. None of them calls the model: the figures come from code, so
 they are correct by construction rather than checked after the fact (D18).
 
 | Brief | What the page does | How the figures are made |
 |---|---|---|
 | Save an investigation as a reusable report with a selectable period | "Save as report" on any answer with checked figures. The report keeps which figures they were (metric and segment); open it from "Saved reports", pick any months, and run it | `calc.totals` for each calendar month, in the agent container |
 | Visual comparison before and after correcting a faulty join | "Compare with the rules": gross per month with orders joined to refunds and with each table summed on its own, the difference, and both SQL queries | Fixed SQL through the read-only gateway; the corrected side must equal `calc.totals` |
+| Adjust an explicit assumption and compare the figures | The same page: a switch for which month a refund belongs to, the month it was paid (rule 2) or the month of its order. Net sales under both are charted side by side | Fixed SQL, as above |
 
 With the planted data, the faulty join puts September gross at 209,000 cents instead of 204,000
-(O3 has two refunds). `tests/test_history.py` checks it against `data/expected.json`.
+(O3 has two refunds). Counting refunds by their order's month gives September refunds of 11,000
+instead of 21,000, and net sales then rise from August to September instead of falling: the
+assumption flips the conclusion. `tests/test_history.py` checks both against `data/expected.json`.
 
 ## Guardrails
 
@@ -304,7 +307,7 @@ database is built and again before every question:
 - **Saved reports** are monthly. They keep the answer's checked figures (metric and segment), not
   its prose, its chart or any breakdown the verifier cannot check, such as per customer. A month with
   partial data, such as October 2026, is not marked as partial.
-- **The comparison** covers the planted faulty join.
+- **The comparison** covers the two planted cases: the faulty join and the refund month.
 
 ## Time spent
 

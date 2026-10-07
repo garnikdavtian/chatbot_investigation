@@ -147,3 +147,5 @@ def test_compare_shows_the_planted_traps_next_to_the_rules(client):
     traps = EXPECTED["traps"]
     assert sep["faulty_join"]["correct_gross_cents"] == EXPECTED["periods"][1]["gross_cents"]
     assert sep["faulty_join"]["naive_join_gross_cents"] == traps["naive_join_september_gross_cents"]
+    assert sep["refund_month"]["refunds_by_refund_date_cents"] == EXPECTED["periods"][1]["refunds_cents"]
+    assert sep["refund_month"]["refunds_by_order_date_cents"] == traps["refunds_by_order_date_september_cents"]
