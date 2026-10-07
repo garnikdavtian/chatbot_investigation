@@ -4,6 +4,7 @@ calls; the api sends the chat's last run with each question and saves what comes
   GET  /config                     model, limits, and whether new questions can be asked
   POST /invoke {question, parent}  NDJSON: {"progress": ...} after each graph step, then {"run": ...}
   POST /replay {run, parent}       {"status", "diffs"}: the recorded responses re-run, no LLM call
+  POST /figures {from_month, to_month}  gross, refunds and net per month, all customers and per segment (calc, no LLM)
 
 No auth: only the api container can reach it (an internal compose network). It holds the LLM key and reaches
 the sales data through the db service; it never sees passwords or other users' chats.
@@ -13,7 +14,7 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from investigator import agent, gateway
+from investigator import agent, calc, gateway
 from investigator.llm import LLMError, live_model
 
 MAX_BODY_BYTES = 5_000_000  # a question plus its chat's last run record
@@ -32,6 +33,12 @@ def progress(run: dict) -> dict:
             "submitted": run["report"] is not None, "repairs": len(run["repairs"])}
 
 
+def figures(first: str, last: str) -> dict:
+    _, data = gateway.snapshot(agent.DB)
+    return {"months": [{"month": m, "all": calc.totals(data, *calc.month_bounds(m)),
+                        **calc.by_segment(data, *calc.month_bounds(m))} for m in calc.months(first, last)]}
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != "/config":
@@ -46,6 +53,11 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(size))
         except ValueError:
             return self._json(400, {"error": "body is not valid JSON"})
+        if self.path == "/figures":
+            try:
+                return self._json(200, figures(body.get("from_month"), body.get("to_month")))
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
         if self.path == "/replay":
             new, diffs = agent.replay(body["run"], body.get("parent"))
             return self._json(200, {"status": new["status"], "diffs": diffs})

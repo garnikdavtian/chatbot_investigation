@@ -18,7 +18,7 @@ You need Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run pytest                          # 61 tests, no API key
+uv run pytest                          # 62 tests, no API key
 uv run python -m investigator check    # replay every saved live run, no API key
 uv run python -m investigator add-user alice          # asks for a password
 uv run --env-file .env python -m investigator serve   # http://127.0.0.1:8000, log in as alice
@@ -46,9 +46,8 @@ docker compose up --build                                       # http://127.0.0
 docker compose exec api python -m investigator add-user alice   # then log in as alice
 ```
 
-The earlier three-container version ran under `docker compose up` on the candidate's machine. The
-four-container file is validated by `docker compose config`, and the api → agent path over HTTP is
-tested locally and in `tests/test_history.py`; `up` on this version has not been run yet.
+Both the three-container version and this four-container version ran under `docker compose up` on
+the candidate's machine.
 
 Other commands:
 
@@ -109,10 +108,10 @@ flowchart LR
 | `investigator/verify.py` | Checks each figure against its cited result and against `calc.py`, and checks money in the text. Issue texts never include expected values |
 | `investigator/calc.py` | `domain.md` in plain Python (the oracle), plus the data contract |
 | `investigator/llm.py` | The only model client: `ChatOpenAI` for any OpenAI-compatible API, and `Scripted` for replay and tests |
-| `investigator/history.py` | Users (scrypt password hashes), login sessions (hashed tokens) and chats, in `data/history.sqlite`, apart from the sales data |
+| `investigator/history.py` | Users (scrypt password hashes), login sessions (hashed tokens), chats and saved reports, in `data/history.sqlite`, apart from the sales data |
 | `investigator/report.py` | Report schema (pydantic), run files, Markdown export |
 | `investigator/api.py` | FastAPI: login, chats, export; calls the agent service for every question and saves the result |
-| `investigator/agent_service.py` | The agent container: the compiled graph waiting for `/invoke` and `/replay` calls; stateless |
+| `investigator/agent_service.py` | The agent container: the compiled graph waiting for `/invoke` and `/replay` calls; stateless. Also `/figures`, computed by code with no model call |
 | `investigator/__main__.py`, `static/` | CLI (ask, replay, check, serve, agent, db, add-user) and the web page |
 
 **Statuses.**
@@ -132,7 +131,16 @@ removed; the summary reaches the model as user-side input, never in the system m
 
 The design decisions, the alternatives rejected and the known ceilings are in
 [`docs/decisions.md`](docs/decisions.md). D12–D17 cover the graph, memory, guard, users,
-containers and the API.
+containers and the API; D18 covers the optional enhancements.
+
+## Optional enhancements
+
+None of them calls the model: the figures come from code, so
+they are correct by construction rather than checked after the fact (D18).
+
+| Brief | What the page does | How the figures are made |
+|---|---|---|
+| Save an investigation as a reusable report with a selectable period | "Save as report" on any answer with checked figures. The report keeps which figures they were (metric and segment); open it from "Saved reports", pick any months, and run it | `calc.totals` for each calendar month, in the agent container |
 
 ## Guardrails
 
@@ -289,8 +297,9 @@ database is built and again before every question:
 - **Users.** An admin creates them; there is no sign-up or password reset. Login has no rate limit
   and tokens do not expire (fine on 127.0.0.1). History is one SQLite file written by one api
   instance.
-- **Docker.** The three-container version ran under `docker compose up`; the four-container version
-  is validated by `docker compose config` and local runs, not yet by `up`.
+- **Saved reports** are monthly. They keep the answer's checked figures (metric and segment), not
+  its prose, its chart or any breakdown the verifier cannot check, such as per customer. A month with
+  partial data, such as October 2026, is not marked as partial.
 
 ## Time spent
 

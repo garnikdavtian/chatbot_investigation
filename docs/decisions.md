@@ -461,8 +461,8 @@ The split's point is containment: the container with user data has no LLM key or
 container with the key has no user data. Without Docker, `uv run python -m investigator serve` runs
 the agent service on a thread and the api in front of it, still over HTTP, so there is one code path.
 
-**Verified.** The three-container version ran under `docker compose up` on the candidate's machine.
-The four-container file passes `docker compose config`; `up` on it has not been run yet.
+**Verified.** Both the three- and the four-container versions ran under `docker compose up` on the
+candidate's machine.
 
 ## D17. FastAPI for the api, the standard library for internal services
 
@@ -481,3 +481,28 @@ it would need a thread and a queue just to stream.
 **Rejected.** FastAPI everywhere: more code for internal services with no routes to validate.
 httpx for the api → agent call: `urllib` already streams lines.
 
+## D18. The optional enhancements: figures by code, not by the model
+
+The brief's three optional enhancements (a reusable report with a selectable period, a before/after
+view of a faulty join, an adjustable assumption) all re-compute or compare known figures. None of
+them needs judgement, so none of them calls the model: a model call would only add cost, delay and
+a way to be wrong.
+
+- **Saved reports are a spec, not SQL.** Saving keeps which checked figures the answer had (metric
+  and segment, e.g. net for all customers, refunds for `small`) and its months. Running it computes
+  `calc.totals` for each calendar month picked. `calc.py` is already the answer key, checked three
+  ways in `tests/test_data.py`, so the figures are right by construction. Re-running the model's
+  own SQL with new dates was rejected: swapping dates inside SQL text is fragile, and it would have
+  to be checked again. The candidate chose this over re-asking the agent for the new period, which
+  would keep the prose but cost one model call per run.
+- **Where it runs.** `/figures` runs in the agent container, which already reaches the
+  db and holds `calc`. Saved reports live in the api's `history.sqlite` with the users, filtered by
+  user like chats; saving the same answer again returns the same report. The api never reaches the
+  db directly, and no new container was needed: the inputs are months, never free text or
+  SQL.
+- **The page** draws the report with the existing chart code (`chartView`), fed the computed rows as
+  if they were a query result.
+
+**Rejected.** A separate "figures" container (more to run for no real isolation gain, see above).
+Letting the chatbot call these as tools (it puts the model back in the path; the pages are one
+click away).

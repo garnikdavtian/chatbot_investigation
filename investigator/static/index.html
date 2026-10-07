@@ -68,7 +68,14 @@ aside { background: var(--side); border-right: 1px solid var(--border); display:
 .btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel);
   font-size: 14px; font-weight: 550; transition: background .15s var(--ease), border-color .15s var(--ease); }
 .btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--sunken); }
-.new { margin: 0 12px 16px; }
+.new { margin: 0 12px 8px; }
+.new + nav { margin-top: 8px; }
+nav .label { padding: 8px 10px 6px; }
+.page { display: flex; flex-direction: column; gap: 16px; }
+.page-h { font-size: 17px; font-weight: 600; margin: 8px 0 0; }
+.tool { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; padding: 12px 16px; }
+.tool label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.tool input[type="month"] { min-height: 40px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--panel); color: inherit; font: inherit; }
 .label { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0 16px 6px; margin: 0; letter-spacing: .02em; }
 nav { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
 nav button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 8px; min-height: 44px; transition: background .15s var(--ease); }
@@ -242,7 +249,6 @@ pre { font: 13px/1.5 var(--mono); background: var(--panel); border: 1px solid va
   <aside id="side" aria-label="Chat history">
     <div class="brand"><span class="logo"><span data-icon="search"></span></span><div><strong>Data Investigator</strong><small>Answers with checked figures</small></div></div>
     <button class="btn new" id="new" type="button"><span data-icon="plus"></span>New chat</button>
-    <h2 class="label">Recent</h2>
     <nav id="list"></nav>
     <div class="mode" id="mode"></div>
   </aside>
