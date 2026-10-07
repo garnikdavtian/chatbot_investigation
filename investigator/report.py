@@ -84,7 +84,8 @@ def load(run_id: str, runs_dir: Path = RUNS) -> dict:
     return json.loads((runs_dir / f"{run_id}.json").read_text())
 
 
-STATUS = {"verified": "✅ verified", "unverified": "⚠️ unverified", "incomplete": "⏸ incomplete", "failed": "❌ failed"}
+STATUS = {"verified": "✅ verified", "unverified": "⚠️ unverified", "answered": "💬 answered", "blocked": "🚫 blocked",
+          "incomplete": "⏸ incomplete", "failed": "❌ failed"}
 FIGURE = {"ok": "✅", "query_error": "❌ query computed a wrong value", "unsupported": "⚠️ not in the cited result",
           "wrong": "❌ wrong and not in the cited result"}
 
@@ -103,6 +104,8 @@ def to_markdown(run: dict) -> str:
     cfg, rep, ver, check = run["config"], run["report"], run["verification"] or {}, run["data_check"] or {}
     served = sorted({c["model"] for c in run["model_calls"] if c.get("model")})
     sources = ", ".join(sorted({c["source"] for c in run["model_calls"]})) or "none"
+    purposes = ", ".join(f"{n} {p}" for p in ("guard", "compact", "reason")
+                         if (n := sum(c["purpose"] == p for c in run["model_calls"])))
     status = STATUS.get(run["status"], run["status"])
     status += f" — {run['error']}" if run["error"] else ""
     status += f" (after {len(run['repairs'])} repair round)" if run["repairs"] else ""
@@ -112,12 +115,20 @@ def to_markdown(run: dict) -> str:
            f"**Question:** {run['question']}  ",
            f"**Status:** {status}  ",
            (f"**Model:** {model}, reasoning effort {cfg.get('reasoning_effort')}; {len(run['model_calls'])} model calls "
-            f"({sources}); {len(run['queries'])} of {cfg['max_queries']} query attempts  "),
+            f"({purposes}; {sources}); {len(run['queries'])} of {cfg['max_queries']} query attempts  "),
            (f"**Data:** db `{cfg['db_sha']}`, contract check: {len(check.get('errors', []))} errors, "
-            f"{len(check.get('warnings', []))} warnings · **Prompt:** `{cfg['prompt']}` `{cfg['prompt_sha']}` · "
-            f"{run['created_at']}")]
+            f"{len(check.get('warnings', []))} warnings · **Prompts:** {', '.join(f'`{p}`' for p in cfg['prompts'].values())} "
+            f"`{cfg['prompt_sha']}` · "
+            f"{run['created_at']}  ")]
     if run["parent_run_id"]:
-        out.append(f"**Follow-up of:** [{run['parent_run_id']}]({run['parent_run_id']}.md)")
+        out.append(f"**Follow-up of:** [{run['parent_run_id']}]({run['parent_run_id']}.md)  ")
+    if run["guard"]:
+        out.append(f"**Guard:** {run['guard']['label']} — {run['guard']['reason']}  ")
+    if run["compacted"]:
+        out.append(f"**Memory:** {run['compacted']} earlier messages were summarized before this question")
+    if not rep and run["answer"] is not None:
+        out += ["", "## Answer", "", prose(run["answer"])]
+        out += ["", "## Verification issues", ""] + [f"- {prose(i)}" for i in ver.get("issues", [])] if ver else []
     if rep:
         out += ["", "## Answer", "", prose(rep["summary"])]
         if rep.get("chart"):
@@ -143,7 +154,7 @@ def to_markdown(run: dict) -> str:
     for n, r in enumerate(run["repairs"], 1):
         out += ["", f"## Repair round {n}", "", "The first report failed these checks and went back to the model:", ""]
         out += [f"- {prose(i)}" for i in r["verification"]["issues"]]
-    out += ["", "## Queries", ""]
+    out += ["", "## Queries", ""] if run["queries"] else []
     for q in run["queries"]:
         state = f"{q['error']}: {q['message']}" if q["error"] else f"{len(q['rows'])} rows"
         state += ", truncated" if q["truncated"] else ""
@@ -152,6 +163,6 @@ def to_markdown(run: dict) -> str:
             out += [_table(q["columns"], q["rows"]), ""]
     summary = "System prompt: instructions, business rules (data/starter/domain.md) and schema"
     out += ["## Definitions given to the model", "", f"<details><summary>{summary}</summary>", "",
-            run["messages"][0]["content"], "", "</details>", "",
+            run["system_prompt"], "", "</details>", "",
             "## Reproduce", "", f"`uv run python -m investigator replay {run['run_id']}` (recorded responses, no API key)", ""]
     return "\n".join(out)

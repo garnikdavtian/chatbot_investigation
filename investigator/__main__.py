@@ -1,7 +1,7 @@
 """Command line for the investigator.
 
   uv run --env-file .env python -m investigator ask "Why did net sales change from August to September 2026?"
-  uv run --env-file .env python -m investigator ask "Which segment drove it?" --parent <run_id>
+  uv run --env-file .env python -m investigator ask "Which segment drove it?" --parent <run_id>   # same chat
   uv run python -m investigator replay <run_id>    # recorded responses, no API key
   uv run python -m investigator check              # replay every saved run, exit 1 on any difference
   uv run --env-file .env python -m investigator serve   # web UI on http://127.0.0.1:8000
@@ -10,15 +10,15 @@ import argparse
 import sys
 
 from investigator import agent, report
-from investigator.llm import LiveLLM, LLMError
+from investigator.llm import LLMError, live_model
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="investigator", description="Bounded LLM investigation of the sales database.")
+    p = argparse.ArgumentParser(prog="investigator", description="Chat with a bounded agent over the sales database.")
     sub = p.add_subparsers(dest="cmd", required=True)
-    ask = sub.add_parser("ask", help="investigate a question with the live model")
+    ask = sub.add_parser("ask", help="ask the live model a question")
     ask.add_argument("question")
-    ask.add_argument("--parent", help="run id of the investigation this question follows up")
+    ask.add_argument("--parent", help="run id of the earlier message in the same chat")
     sub.add_parser("replay", help="replay one saved run without an API key").add_argument("run_id")
     sub.add_parser("check", help="replay every saved run; exit 1 if any result differs")
     serve = sub.add_parser("serve", help="web UI on 127.0.0.1")
@@ -34,16 +34,16 @@ def main(argv=None) -> int:
     if a.cmd == "ask":
         parent = report.load(a.parent) if a.parent else None
         try:
-            llm = LiveLLM.from_env()
+            model = live_model()
         except LLMError as e:
             sys.exit(str(e))
-        run = agent.investigate(a.question, llm, parent=parent)
+        run = agent.chat(a.question, model, parent)
         path = report.save(run)
-        print(f"{run['status']}: " + (report.prose(run["report"]["summary"]) if run["report"] else run["error"]))
+        print(f"{run['status']}: " + report.prose(run["answer"] or run["error"]))
         for issue in (run["verification"] or {}).get("issues", []):
             print(f"  ! {report.prose(issue)}")
         print(f"saved {path.relative_to(report.ROOT)} and .md")
-        return 0 if run["status"] == "verified" else 1
+        return 0 if run["status"] in ("verified", "answered", "blocked") else 1
 
     runs = [report.load(a.run_id)] if a.cmd == "replay" else [report.load(f.stem) for f in sorted(report.RUNS.glob("*.json"))]
     differs = 0

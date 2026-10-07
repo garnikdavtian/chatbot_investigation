@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Bounded LLM investigator for a fictional sales database (Provectus take-home, task D)"
 requires-python = ">=3.12"
 dependencies = [
+    "langchain-openai>=1.6.7",
+    "langgraph>=1.2.14",
     "openai>=3.24.0",
 ]
 

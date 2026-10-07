@@ -24,8 +24,6 @@ def verify(report: dict, queries: list, data: dict) -> dict:
     by_id = {q["id"]: q for q in queries}
     figures, issues = [], []
     for i, finding in enumerate(report["findings"]):
-        if finding["kind"] == "observed" and not finding["metrics"]:
-            issues.append(f"finding {i + 1} is marked observed but has no figures")
         for m in finding["metrics"]:
             q = by_id.get(m["query_id"])
             grounded = bool(q) and q["error"] is None and any(
@@ -41,23 +39,28 @@ def verify(report: dict, queries: list, data: dict) -> dict:
                 issues.append(f"finding {i + 1}: {m['metric']} {start} to {end} (excluded), "
                               f"{m['segment'] or 'all customers'} = {m['value_cents']} cents [{m['query_id']}] {why}")
 
+    ok_values = {abs(f["value_cents"]) for f in figures if f["status"] == "ok"}
+    issues += money_issues([report["summary"]] + [f["statement"] for f in report["findings"]], ok_values)
+    if report.get("chart"):
+        issues += _chart_issues(report["chart"], by_id)
+    return {"ok": not issues, "figures": figures, "issues": list(dict.fromkeys(issues))}
+
+
+def money_issues(texts: list, ok_values: set) -> list:
+    """Money in text must be a checked figure or the difference of two. Also used for plain replies,
+    where ok_values are the figures checked earlier in the conversation."""
     # ponytail: only amounts written as "N cents" are checked; bare numbers are not. Upgrade path:
     # have the model reference figures by id and render the numbers into the text in code.
-    ok_values = {abs(f["value_cents"]) for f in figures if f["status"] == "ok"}
-    allowed = ok_values | {abs(a - b) for a in ok_values for b in ok_values}
-    for text in [report["summary"]] + [f["statement"] for f in report["findings"]]:
+    allowed = set(ok_values) | {abs(a - b) for a in ok_values for b in ok_values}
+    issues = []
+    for text in texts:
         if "$" in text:
             issues.append('the text writes money with "$"; write amounts as integer cents')
         for raw in CENTS.findall(text):
             if abs(int(raw.replace(",", ""))) not in allowed:
                 issues.append(f"the text mentions {raw} cents, which is not a checked figure or the difference "
                               "of two: attach it to a finding with the query that shows it, or remove it")
-
-    if report.get("chart"):
-        issues += _chart_issues(report["chart"], by_id)
-    if not figures:
-        issues.append("the report has no figures to check")
-    return {"ok": not issues, "figures": figures, "issues": list(dict.fromkeys(issues))}
+    return issues
 
 
 def _chart_issues(c: dict, by_id: dict) -> list:

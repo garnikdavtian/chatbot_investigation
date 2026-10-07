@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from investigator import agent, gateway, report
-from investigator.llm import LiveLLM, LLMError
+from investigator.llm import LLMError, live_model
 
 PAGE = Path(__file__).parent / "static" / "index.html"
 MAX_QUESTION_CHARS = 500
@@ -97,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("parent_run_id") and parent is None:
                 return
             try:
-                llm = LiveLLM.from_env()
+                model = live_model()
             except LLMError as e:
                 return self._json(503, {"error": str(e)})
             # One JSON object per line: progress after every tool call, then the saved run.
@@ -106,7 +106,7 @@ class Handler(BaseHTTPRequestHandler):
                          "Cache-Control": "no-store"}.items():
                 self.send_header(k, v)
             self.end_headers()
-            run = agent.investigate(question, llm, parent=parent, on_step=lambda r: self._line({"progress": progress(r)}))
+            run = agent.chat(question, model, parent, on_step=lambda r: self._line({"progress": progress(r)}))
             report.save(run)
             return self._line({"run": run})
         if len(path) == 4 and path[:2] == ["api", "runs"] and path[3] == "replay":
