@@ -60,7 +60,7 @@ or `sql` and a message the model and the user can read.
 
 **Why.** A parser or regex has to anticipate every form of write, such as a CTE wrapped around a
 `DELETE`, a `PRAGMA` or an `ATTACH`. The authorizer sees what SQLite actually compiled. Evidence:
-`tests/test_gateway.py`, plus a live run (`runs/20261007-111016-ea56`; v1: `20261006-175401-e4ae`, in git history) in which the model sent a
+`tests/test_gateway.py`, plus a live run (`runs/20261007-174722-035d`; v1: `20261006-175401-e4ae`, in git history) in which the model sent a
 `DELETE`. The gateway rejected it, the attempt counted (1 of 6), and the database bytes did not
 change.
 
@@ -404,8 +404,9 @@ answered a joke request with an investigation.
 briefly; in manual testing "how r ya" got "I'm doing well, thanks!", which a sales-data tool should not
 say. v2 refuses greetings, small talk and thanks on their own, and still allows a data question that
 starts with one ("thanks, now by segment"). `evals/guard_eval.py`, 3 trials each: small talk and
-off-topic let through v1 24/33, v2 0/33; data questions and follow-ups refused v1 0/57, v2 0/57.
-Saved runs replay with the guard version they recorded.
+off-topic let through v1 24/33, v2 0/33; data questions and follow-ups refused v1 0/57, v2 0/57
+(every label in `evals/guard_results.json`). Saved runs replay with the guard version they recorded;
+the demo runs in `runs/` were re-recorded with guard-v2 and prompt v9.
 
 **Ceiling.** A classifier can be argued with. A message that talks the guard into "allow" reaches
 `reason`, which has the same capability limits and checks as before.

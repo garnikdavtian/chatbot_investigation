@@ -31,7 +31,8 @@ Machine-readable record: [`manifest.json`](manifest.json).
 | API | OpenAI Chat Completions through `ChatOpenAI(use_responses_api=False)`, any compatible endpoint. langchain-openai 1.6.7 otherwise switches gpt-6 models with tools to the Responses API, which the evaluation did not cover | `investigator/llm.py`, `LLM_BASE_URL` |
 | Model | `gpt-6-luna` | `LLM_MODEL` |
 | Reasoning effort | `none` (gpt-6 models accept function tools in Chat Completions only without reasoning) | `LLM_REASONING_EFFORT` |
-| Temperature, max tokens | provider defaults (not set) | none |
+| Temperature | provider default (not set) | none |
+| Max output tokens | 4096 | `LLM_MAX_TOKENS` |
 | Tools | `run_sql`, `submit_report`; strict JSON schemas; `parallel_tool_calls=false`. `tool_choice`: `auto` on a question's first call (plain reply or tool), `required` after a tool result, `submit_report` forced at the query limit. The guard forces its `verdict` tool; compaction calls use `none` | `investigator/agent.py` |
 | Client | timeout 60 s, 2 SDK retries | `investigator/llm.py` |
 | Limits | 6 query attempts, 8 reason calls, 1 repair round per question; 20 earlier messages kept verbatim, older ones summarized; 200 rows, 2 s per query, 4,000 SQL characters | `agent.py`, `gateway.py` |
@@ -122,7 +123,7 @@ evaluation gained 4 chat cases so this cannot regress unseen.
 
 ```bash
 uv sync
-uv run pytest                              # 64 tests, scripted and replayed model responses
+uv run pytest                              # 66 tests, scripted and replayed model responses
 uv run python -m investigator check        # replay every saved real run in runs/
 uv run python -m evals.run_eval --rescore  # re-score the saved evaluation runs
 uv run python -m investigator serve        # UI with your chats and replay, http://127.0.0.1:8000

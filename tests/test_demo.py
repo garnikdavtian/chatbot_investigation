@@ -11,12 +11,12 @@ from investigator import agent, calc, report
 
 EXPECTED = json.loads(Path("data/expected.json").read_text())
 AUG, SEP = EXPECTED["periods"]
-MAIN = "20261007-110926-76be"       # Why did net sales change between August and September 2026?
-FOLLOW_UP = "20261007-110952-ef59"  # Break the refund increase down by customer segment. ...
-GUARD = "20261007-111016-ea56"      # Check that the database is read-only: try DELETE ...
-CHART = "20261007-111055-c792"      # Visualize gross sales, refunds and net sales by month
-HI = "20261007-111106-bc2e"         # hi
-JOKE = "20261007-111112-40a9"       # tell me a joke
+MAIN = "20261007-174625-65ff"       # Why did net sales change between August and September 2026?
+FOLLOW_UP = "20261007-174642-b7aa"  # Break the refund increase down by customer segment. ...
+GUARD = "20261007-174722-035d"      # Check that the database is read-only: try DELETE ...
+CHART = "20261007-174828-b3e3"      # Visualize gross sales, refunds and net sales by month
+HI = "20261007-174849-5287"         # hi
+JOKE = "20261007-174852-fa4d"       # tell me a joke
 
 
 def replayed(run_id: str, parent: str | None = None) -> dict:
@@ -83,19 +83,22 @@ def test_5_saved_report_reproduces_refund_change_and_leaves_causes_unknown():
     assert unknown and all(not f["metrics"] and "refund" in f["statement"] for f in unknown)
 
 
-def test_chart_draws_hand_checked_rows_and_leaves_out_the_partial_month():
-    """Not one of the brief's five: the visualize run. October has one day of data, so it is left out."""
+def test_chart_draws_hand_checked_rows_and_flags_the_partial_month():
+    """Not one of the brief's five: the visualize run. October has one day of data, so the prompt says to
+    leave it out or mark it partial in the title."""
     run = replayed(CHART)
     chart = run["report"]["chart"]
     q = next(q for q in run["queries"] if q["id"] == chart["query_id"])
-    rows = [dict(zip(q["columns"], row)) for row in q["rows"]]
-    assert run["status"] == "verified" and [r[chart["x"]] for r in rows] == ["2026-08", "2026-09"]
-    for row, p in zip(rows, (AUG, SEP)):
-        assert [row[y] for y in chart["y"]] == [p["gross_cents"], p["refunds_cents"], p["net_cents"]]
+    rows = {row[chart["x"]][:7]: row for row in (dict(zip(q["columns"], r)) for r in q["rows"])}
+    assert run["status"] == "verified" and list(rows)[:2] == ["2026-08", "2026-09"]
+    for p in (AUG, SEP):
+        assert [rows[p["start"][:7]][y] for y in chart["y"]] == [p["gross_cents"], p["refunds_cents"], p["net_cents"]]
+    assert set(rows) <= {"2026-08", "2026-09", "2026-10"}
+    assert "2026-10" not in rows or "partial" in chart["title"].lower()
 
 
-def test_greeting_is_answered_and_a_joke_is_blocked_without_queries():
+def test_small_talk_and_a_joke_are_blocked_before_the_main_model():
     """Not one of the brief's five: the two v1 failures that led to the graph (docs/v1-chats/)."""
-    hi, joke = replayed(HI), replayed(JOKE)
-    assert hi["status"] == "answered" and hi["queries"] == [] and hi["answer"]
-    assert joke["status"] == "blocked" and [c["purpose"] for c in joke["model_calls"]] == ["guard"]
+    for run in (replayed(HI), replayed(JOKE)):
+        assert run["status"] == "blocked" and run["queries"] == []
+        assert [c["purpose"] for c in run["model_calls"]] == ["guard"]

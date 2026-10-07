@@ -1,9 +1,10 @@
 """The guard alone, live: each guard prompt on the eval's data questions and follow-ups (must allow) and on
 small talk and off-topic requests (must block), 3 trials each. About $0.01. Only the guard runs: a message it
-allows goes through the same pipeline whatever the guard version.
+allows goes through the same pipeline whatever the guard version. Every label is saved to evals/guard_results.json.
 
   uv run --env-file .env python -m evals.guard_eval
 """
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ def label(model, prompt: str, message: str) -> str:
 def main():
     model = live_model()
     jobs = [(m, want) for want, ms in (("allow", ALLOW), ("block", BLOCK)) for m in ms for _ in range(3)]
+    saved = {"model": model.model_name, "trials": 3, "results": {}}
     for prompt in PROMPTS:
         with ThreadPoolExecutor(8) as pool:
             got = list(pool.map(lambda job, p=prompt: label(model, p, job[0]), jobs))
@@ -38,6 +40,8 @@ def main():
               f"small talk and off-topic let through {sum(m in BLOCK for m in wrong)}/{3 * len(BLOCK)}")
         for m in dict.fromkeys(wrong):
             print(f"  wrong {wrong.count(m)}/3: {m}")
+        saved["results"][prompt] = [{"message": m, "want": want, "got": g} for (m, want), g in zip(jobs, got)]
+    (Path(__file__).parent / "guard_results.json").write_text(json.dumps(saved, indent=1) + "\n")
 
 
 if __name__ == "__main__":

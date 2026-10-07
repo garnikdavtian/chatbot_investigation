@@ -41,18 +41,18 @@ per question. The page's **Inspector** panel shows this loop live.
 
 ## One investigation, step by step
 
-Saved run `20261007-110926-76be`: *"Why did net sales change between August and September 2026?"*
+Saved run `20261007-174625-65ff`: *"Why did net sales change between August and September 2026?"*
 
 1. **Guard:** the message is about the data, so it is allowed.
 2. **Query 1:** gross sales, refunds and net sales for both months, plus the first and last dates
-   with data (is any month partial?).
-3. **Queries 2 and 3**, chosen after seeing query 1: a cross-check of the totals, and a check that
-   no month is cut short at its boundaries.
-4. **Report:** four findings, each labeled `observed`, `inferred` or `unknown`.
-5. **Checks:** all 12 figures match their query results and the rules. The status is **verified**,
+   with data (is any month partial?). Result: net fell, gross rose, refunds rose a lot.
+3. **Query 2**, chosen after seeing query 1: the same figures split by customer segment, to see where
+   the refunds came from.
+4. **Report:** three findings, labeled `observed`, `inferred` and `unknown`.
+5. **Checks:** all 10 figures match their query results and the rules. The status is **verified**,
    with no repair needed.
 
-The follow-up, *"Break the refund increase down by customer segment"* (run `…-ef59`), continues the
+The follow-up, *"Break the refund increase down by customer segment"* (run `…-b7aa`), continues the
 same chat. It runs 2 queries, shows that the segments add up to each month's total, and is verified
 too. Anyone can replay both runs without an API key (`python -m investigator check`), and every
 query, result and model response is saved with the run.
@@ -87,8 +87,8 @@ query, result and model response is saved with the run.
 - **The brief's five checks all pass** on saved live runs: correct totals, O3 counted once, a
   consistent follow-up, a rejected write that changes nothing, and facts kept apart from guesses.
 - **The model was chosen by measurement.** The same questions were run 3 times each through the
-  real pipeline. gpt-6-luna passed 27 of 30 data questions and 12 of 12 chat messages, at $0.0017
-  per question. Larger models did not score higher.
+  real pipeline. gpt-6-luna passed 27 of 30 data questions, 11 of 12 chart questions and 12 of 12
+  chat messages, at $0.0017 per question. Larger models did not score higher.
 - **66 automated tests** run without an API key. Failures the live model never produced, such as
   bad SQL, hitting limits or API errors, are tested with a scripted model.
 
@@ -125,7 +125,9 @@ Every prompt version is kept (`prompts/`), and saved runs replay with the versio
 - Code checks the **numbers**, not the **reasoning**: the explanation of why can still be wrong, and
   the page says so.
 - Only amounts written as "N cents" are checked in free text; other numbers in the text are not.
-- The evaluation is small (one dataset, 30 data runs per setup). It is enough to choose a model,
+- An amount in the text passes if it equals a checked figure or the difference of two, whatever it is
+  said to be: "net sales fell by 18,500 cents" (really the refund increase) would pass.
+- The evaluation is small (one dataset, 54 runs for the chosen setup). It is enough to choose a model,
   not to promise general reliability.
 
 Design decisions and rejected alternatives: [`decisions.md`](decisions.md).

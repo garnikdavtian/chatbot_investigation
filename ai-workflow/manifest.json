@@ -31,6 +31,7 @@
         "evals/run_eval.py",
         "evals/results.json",
         "evals/guard_eval.py",
+        "evals/guard_results.json",
         "prompts/guard-v2.md",
         "prompts/compact-v1.md"
       ],
@@ -173,7 +174,7 @@
       "original_path_or_scope": "prompts/system-v9.md",
       "saved_path": "prompts/system-v9.md",
       "version_or_commit": "prompt set sha 7844d9b38ab1 (with guard-v1 and compact-v1); v7 and v8 kept as measured snapshots",
-      "used_during": "evaluations v7, v8, v9",
+      "used_during": "evaluations v7, v8, v9; all demo runs in runs/",
       "status": "used",
       "redactions": []
     },
@@ -184,7 +185,7 @@
       "original_path_or_scope": "prompts/system-v6.md",
       "saved_path": "prompts/system-v6.md",
       "version_or_commit": "prompt set sha 5370a2404abe (with guard-v1 and compact-v1)",
-      "used_during": "all runs in runs/; evaluation v6",
+      "used_during": "earlier demo runs (in git history); evaluation v6",
       "status": "used",
       "redactions": []
     },
@@ -195,7 +196,7 @@
       "original_path_or_scope": "prompts/guard-v1.md",
       "saved_path": "prompts/guard-v1.md",
       "version_or_commit": "prompt set sha 5370a2404abe",
-      "used_during": "every message from the rewrite until guard-v2; saved runs replay with it",
+      "used_during": "every message from the rewrite until guard-v2; evaluations v6-v9; earlier demo runs (in git history)",
       "status": "used",
       "redactions": []
     },
@@ -206,7 +207,7 @@
       "original_path_or_scope": "prompts/guard-v2.md",
       "saved_path": "prompts/guard-v2.md",
       "version_or_commit": "added 2026-10-07 after the candidate's manual test (\"how r ya\" got a friendly reply)",
-      "used_during": "every message since 2026-10-07 evening",
+      "used_during": "every message since 2026-10-07 evening; all demo runs in runs/; evals/guard_results.json",
       "status": "used",
       "redactions": []
     },

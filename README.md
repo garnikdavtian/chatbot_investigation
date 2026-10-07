@@ -4,8 +4,9 @@ Provectus Junior AI Engineer take-home, Alternative D.
 
 A chat that answers "why did sales change?" from a small sales database. The agent writes read-only
 SQL, looks at the results, asks a follow-up query, and writes a report. **Code then checks every
-number in the report** against the query result it cites and against the business rules. A wrong
-number never reaches the user as "verified".
+figure in the report** against the query result it cites and against the business rules. An answer
+whose figures fail is shown as "unverified", with the problems listed. (Code checks the numbers, not
+the reasoning: see Known limitations.)
 
 **Reviewers: start with the [walkthrough](docs/walkthrough.md)** (5-minute read: approach, findings, checks).
 
@@ -97,7 +98,7 @@ Design decisions and rejected alternatives: [`docs/decisions.md`](docs/decisions
 
 | What could go wrong | What stops it |
 |---|---|
-| Off-topic or harmful requests, small talk | The guard, before the main model sees them. `evals/guard_eval.py`: 33/33 such messages refused, 0/57 data questions refused |
+| Off-topic or harmful requests, small talk | The guard, before the main model sees them. `evals/guard_eval.py` ([results](evals/guard_results.json)): 33/33 such messages refused, 0/57 data questions refused |
 | The model changes the data | A read-only file, `PRAGMA query_only` and a SQLite authorizer that allows only SELECT on three tables |
 | Invented or wrong numbers | The verifier: each figure must be a cell of the cited result and equal the rules (`calc.py`) |
 | Endless loops | 6 queries, 8 model calls and 1 repair round per question |
@@ -127,12 +128,16 @@ are tested with a scripted model in `tests/test_agent.py`.
 ## Model
 
 **gpt-6-luna, reasoning effort `none`, prompt v9.** Each candidate was run through the real pipeline
-(`evals/run_eval.py`): 10 data questions and 4 chat messages, 3 times each.
+(`evals/run_eval.py`): 10 data questions, 4 chart questions and 4 chat messages, 3 times each.
 
-| Model | Prompt | Data questions | Chat | Cost per question |
-|---|---|---|---|---|
-| **gpt-6-luna** | **v9** | **27/30** | **12/12** | **$0.0017** |
-| gpt-6-luna | v6 | 26/30 | 12/12 | $0.0016 |
+| Model | Prompt | Data questions | Chart kinds | Chat | Cost per question |
+|---|---|---|---|---|---|
+| **gpt-6-luna** | **v9** | **27/30** | **11/12** | **12/12** | **$0.0017** |
+| gpt-6-luna | v6 | 26/30 | not asked (chart kinds came in v7) | 12/12 | $0.0016 |
+
+The evaluation ran with guard-v1. guard-v2 changed only which messages the guard lets through, so it was
+measured on its own (`evals/guard_eval.py`, above). The saved demo runs in `runs/` were recorded with the
+shipped setup: gpt-6-luna, prompt v9, guard-v2.
 
 In earlier rounds, larger models (gpt-5.6-luna, gpt-6-sol) did not beat gpt-6-luna's best score and
 cost 2.5× to 20× more. This is enough to pick a model for this dataset, not a general reliability estimate. Prompt
@@ -174,6 +179,8 @@ All three from the brief are built. None uses the model: the figures come straig
 ## Known limitations
 
 - Only amounts written as "N cents" in the text are checked; other numbers and claims are not.
+- An amount in the text passes if it equals a checked figure or the difference of two, whatever it is
+  said to be: "net sales fell by 18,500 cents" (really the refund increase) would pass.
 - The verifier knows gross, refunds and net by period and segment. Per-customer or weekly values can
   appear in charts and text, but are not checked.
 - Charts are checked for shape (a waterfall must add up), not their values against the rules.
